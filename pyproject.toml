@@ -1,6 +1,6 @@
 [project]
 name = "dictator"
-version = "1.0.0"
+version = "1.0.1"
 description = "Push-to-talk speech-to-text using whisper.cpp"
 readme = "README.md"
 requires-python = ">=3.11"
