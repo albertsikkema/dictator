@@ -92,29 +92,47 @@ check-gh-auth:
 		exit 1; \
 	fi
 
+# === Release Notes Extraction ===
+# Extract changelog section for current version
+RELEASE_NOTES_FILE := $(RELEASE_DIR)/.release-notes.md
+define extract_changelog
+	@mkdir -p $(RELEASE_DIR)
+	@awk '/^## \[$(VERSION)\]/{found=1; next} /^## \[/{if(found) exit} found{print}' CHANGELOG.md > $(RELEASE_NOTES_FILE)
+	@if [ ! -s $(RELEASE_NOTES_FILE) ]; then \
+		echo "Warning: No changelog entry found for version $(VERSION)"; \
+		echo "Using default release notes."; \
+		echo "Release $(TAG)" > $(RELEASE_NOTES_FILE); \
+	fi
+endef
+
 # === Release ===
 release: check-version check-clean check-on-main check-no-existing-tag check-gh-auth
 	@echo "============================================"
 	@echo "  Releasing $(APP_NAME) $(TAG)"
 	@echo "============================================"
 	@echo ""
-	@echo "[1/5] Building application..."
+	@echo "[1/6] Building application..."
 	@$(MAKE) app
 	@echo ""
-	@echo "[2/5] Creating DMG..."
+	@echo "[2/6] Creating DMG..."
 	@$(MAKE) dmg
 	@echo ""
-	@echo "[3/5] Creating git tag $(TAG)..."
+	@echo "[3/6] Extracting release notes from CHANGELOG.md..."
+	$(extract_changelog)
+	@cat $(RELEASE_NOTES_FILE)
+	@echo ""
+	@echo "[4/6] Creating git tag $(TAG)..."
 	git tag -a $(TAG) -m "Release $(TAG)"
 	@echo ""
-	@echo "[4/5] Pushing tag to origin..."
+	@echo "[5/6] Pushing tag to origin..."
 	git push origin $(TAG)
 	@echo ""
-	@echo "[5/5] Creating GitHub release..."
+	@echo "[6/6] Creating GitHub release..."
 	gh release create $(TAG) \
 		"$(DMG_NAME)#$(APP_NAME) $(VERSION) (DMG)" \
 		--title "$(APP_NAME) $(TAG)" \
-		--generate-notes
+		--notes-file $(RELEASE_NOTES_FILE)
+	@rm -f $(RELEASE_NOTES_FILE)
 	@echo ""
 	@echo "============================================"
 	@echo "  Release $(TAG) complete!"
@@ -125,13 +143,15 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 release-draft: check-version check-clean check-on-main check-no-existing-tag check-gh-auth
 	@echo "Creating draft release for $(TAG)..."
 	@$(MAKE) dmg
+	$(extract_changelog)
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)
 	gh release create $(TAG) \
 		"$(DMG_NAME)#$(APP_NAME) $(VERSION) (DMG)" \
 		--title "$(APP_NAME) $(TAG)" \
-		--generate-notes \
+		--notes-file $(RELEASE_NOTES_FILE) \
 		--draft
+	@rm -f $(RELEASE_NOTES_FILE)
 	@echo ""
 	@echo "Draft release created. Review and publish at:"
 	@echo "$$(gh release view $(TAG) --json url -q .url)"
