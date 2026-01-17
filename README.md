@@ -101,16 +101,26 @@ Settings are saved to `~/.config/dictator/config.json`.
 
 ## Permissions
 
-On first launch, macOS will ask for permissions:
+Dictator needs two permissions to function:
 
-1. **Microphone**: Required for audio recording
-2. **Accessibility**: Required for global hotkey detection and pasting
+### Microphone
+- macOS will prompt automatically on first recording
+- Click **Allow** when asked
+
+### Accessibility (required for hotkey + paste)
+This must be enabled manually:
+1. Open **System Settings → Privacy & Security → Accessibility**
+2. Click the **+** button
+3. Navigate to `/Applications/Dictator.app` and add it
+4. Ensure the toggle is **ON**
+
+### Troubleshooting Permissions
 
 If the hotkey doesn't work:
 1. Go to **System Settings → Privacy & Security → Accessibility**
-2. Remove and re-add Dictator.app
-3. Ensure the toggle is ON
-4. Also check **Input Monitoring** section
+2. Remove Dictator.app (select it and click **−**)
+3. Re-add it using the steps above
+4. Restart the app
 
 ## Project Structure
 
@@ -165,8 +175,7 @@ The app uses the `ggml-small.en.bin` model (~466MB):
 ## Troubleshooting
 
 ### Hotkey not working
-- Check Accessibility permissions in System Settings
-- Remove and re-add the app to Accessibility
+- See [Troubleshooting Permissions](#troubleshooting-permissions) above
 - Try a different hotkey from the menu
 
 ### "[BLANK_AUDIO]" or no transcription
