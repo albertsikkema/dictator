@@ -45,7 +45,8 @@ DMG_NAME := $(RELEASE_DIR)/$(APP_NAME)-$(VERSION)-macos.dmg
 zip: app
 	@mkdir -p $(RELEASE_DIR)
 	@rm -f $(ZIP_NAME)
-	cd $(DIST_DIR) && ditto -c -k --sequesterRsrc --keepParent $(APP_NAME).app ../$(ZIP_NAME)
+	@chmod +x $(DIST_DIR)/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)
+	cd $(DIST_DIR) && ditto -c -k --keepParent $(APP_NAME).app ../$(ZIP_NAME)
 	@echo "Created $(ZIP_NAME) ($$(du -h $(ZIP_NAME) | cut -f1))"
 
 dmg: app
