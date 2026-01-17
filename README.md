@@ -33,10 +33,22 @@ For building from source:
 
 1. Download the DMG from [Releases](https://github.com/albertsikkema/dictator/releases)
 2. Open the DMG and drag `Dictator.app` to `/Applications`
-3. **First launch** (required for unsigned apps):
+3. **First launch** - macOS is protective of unsigned apps (see note below):
    - Right-click `Dictator.app` → select **Open**
    - Click **Open** in the security dialog
 4. Grant permissions when prompted (see [Permissions](#permissions))
+
+> **Note: macOS Security**
+>
+> This app is not signed with an Apple Developer certificate, so macOS will show security warnings. This is normal for open-source apps distributed outside the App Store.
+>
+> **The app is safe** - you can [review the source code yourself](https://github.com/albertsikkema/dictator). All audio processing happens locally on your Mac.
+>
+> If right-click → Open doesn't work:
+> 1. Go to **System Settings → Privacy & Security**
+> 2. Scroll down to the **Security** section
+> 3. You'll see a message about Dictator being blocked - click **Open Anyway**
+> 4. Confirm by clicking **Open** in the dialog
 
 ### From Source
 
