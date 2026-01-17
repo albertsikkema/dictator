@@ -20,8 +20,9 @@ app:
 
 build: app
 	@rm -rf /Applications/Dictator.app
-	@cp -r dist/Dictator.app /Applications/
+	@ditto dist/Dictator.app /Applications/Dictator.app
 	@echo "Installed to /Applications/Dictator.app"
+	@echo "Note: Remove app from Accessibility settings and re-add after each build"
 
 lint:
 	uv run ruff check .

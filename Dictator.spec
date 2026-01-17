@@ -69,8 +69,8 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    codesign_identity='-',  # Ad-hoc sign
+    entitlements_file='Dictator.entitlements',
 )
 
 coll = COLLECT(
