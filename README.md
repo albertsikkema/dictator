@@ -1,0 +1,195 @@
+# Dictator
+
+[![License](https://img.shields.io/badge/License-MIT%20with%20Commons%20Clause-blue.svg)](LICENSE)
+
+A minimal macOS menu bar app for push-to-talk speech-to-text transcription using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
+
+## Features
+
+- **Push-to-talk**: Hold a hotkey to record, release to transcribe and paste
+- **Menu bar app**: Lives in your menu bar, not the dock
+- **Visual feedback**: Icon animates (red → orange → yellow) based on audio level
+- **Fast transcription**: Uses whisper.cpp with Metal GPU acceleration
+- **Configurable hotkey**: Choose between Right Option, Right Command, Left Option, or Left Command
+- **Auto-start**: Option to launch at login
+- **Self-contained**: Model bundled in the app (no external dependencies)
+
+## Requirements
+
+- macOS (tested on Apple Silicon)
+
+For building from source:
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) for package management
+
+## Installation
+
+### Download (Recommended)
+
+1. Download `Dictator.app.zip` from [Releases](https://github.com/albertsikkema/dictator/releases)
+2. Unzip and move `Dictator.app` to `/Applications`
+3. Remove the quarantine attribute (required for unsigned apps):
+   ```bash
+   xattr -cr /Applications/Dictator.app
+   ```
+4. Open the app and grant permissions when prompted (see [Permissions](#permissions))
+
+#### Running Unsigned Apps
+
+Since Dictator is not signed with an Apple Developer certificate, macOS Gatekeeper will block it by default. Two workarounds:
+
+**Option 1: Remove Quarantine (Recommended)**
+```bash
+xattr -cr /Applications/Dictator.app
+```
+
+**Option 2: Right-click to Open**
+1. Right-click (or Control-click) on `Dictator.app`
+2. Select "Open" from the context menu
+3. Click "Open" in the security dialog
+
+### From Source
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/albertsikkema/dictator.git
+   cd dictator
+   ```
+
+2. Install dependencies:
+   ```bash
+   uv sync
+   ```
+
+3. Download the whisper model (~466MB):
+   ```bash
+   make install-model
+   ```
+
+4. Run the app:
+   ```bash
+   make run
+   ```
+
+### Build Standalone App
+
+To build a standalone macOS app:
+
+```bash
+make build
+```
+
+This will:
+- Build the app with PyInstaller
+- Bundle the whisper model inside the app
+- Install to `/Applications/Dictator.app`
+
+## Usage
+
+1. Launch the app (from Applications or `make run`)
+2. Look for the gray circle icon in your menu bar
+3. Hold the hotkey (default: **Right Option**) to record
+4. Speak clearly
+5. Release the hotkey - text will be transcribed and pasted into the active app
+
+### Menu Bar Icon States
+
+| Icon | State |
+|------|-------|
+| Gray circle | Ready |
+| Red/orange/yellow (animated) | Recording - color indicates volume |
+| Blue circle | Transcribing |
+
+### Configuration
+
+Click the menu bar icon to access:
+
+- **Hotkey**: Change the push-to-talk key
+- **Start at Login**: Enable/disable auto-start
+
+Settings are saved to `~/.config/dictator/config.json`.
+
+## Permissions
+
+On first launch, macOS will ask for permissions:
+
+1. **Microphone**: Required for audio recording
+2. **Accessibility**: Required for global hotkey detection and pasting
+
+If the hotkey doesn't work:
+1. Go to **System Settings → Privacy & Security → Accessibility**
+2. Remove and re-add Dictator.app
+3. Ensure the toggle is ON
+4. Also check **Input Monitoring** section
+
+## Project Structure
+
+```
+dictator/
+├── main.py           # Menu bar app and hotkey handling
+├── audio.py          # Audio recording with sounddevice
+├── transcriber.py    # Whisper transcription
+├── icons/            # Menu bar icons (generated)
+├── models/           # Whisper model (downloaded)
+├── Dictator.spec     # PyInstaller configuration
+├── Dictator.icns     # App icon
+├── Makefile          # Build commands
+├── pyproject.toml    # Dependencies
+└── CHANGELOG.md      # Version history
+```
+
+## Development
+
+```bash
+# Run from source
+make run
+
+# Lint code
+make lint
+
+# Format code
+make format
+
+# Build app
+make build
+
+# Clean build artifacts
+make clean
+```
+
+## Tech Stack
+
+- **[whisper.cpp](https://github.com/ggerganov/whisper.cpp)** via [pywhispercpp](https://github.com/absadiki/pywhispercpp) - Speech recognition
+- **[rumps](https://github.com/jaredks/rumps)** - macOS menu bar framework
+- **[pynput](https://github.com/moses-palmer/pynput)** - Global hotkey detection
+- **[sounddevice](https://python-sounddevice.readthedocs.io/)** - Audio capture
+- **[PyInstaller](https://pyinstaller.org/)** - App bundling
+
+## Model
+
+The app uses the `ggml-small.en.bin` model (~466MB):
+- English-only, optimized for accuracy
+- Good for non-native English speakers
+- Uses Metal GPU acceleration on Apple Silicon
+
+## Troubleshooting
+
+### Hotkey not working
+- Check Accessibility permissions in System Settings
+- Remove and re-add the app to Accessibility
+- Try a different hotkey from the menu
+
+### "[BLANK_AUDIO]" or no transcription
+- Speak louder/closer to the microphone
+- Hold the hotkey longer (at least 0.5 seconds)
+- Check that the menu bar icon animates when you speak
+
+### App not starting
+- Check Console.app for crash logs
+- Run from terminal to see errors: `/Applications/Dictator.app/Contents/MacOS/Dictator`
+
+## License
+
+This project is licensed under the [MIT License with Commons Clause](LICENSE).
+
+You are free to use, modify, and distribute this software. However, you may not sell it or offer it as a paid service.

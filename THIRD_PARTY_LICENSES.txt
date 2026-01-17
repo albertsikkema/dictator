@@ -1,0 +1,68 @@
+THIRD-PARTY SOFTWARE LICENSES
+
+This application includes the following third-party software:
+
+================================================================================
+whisper.cpp
+================================================================================
+MIT License
+Copyright (c) 2023-2024 The ggml authors
+https://github.com/ggml-org/whisper.cpp
+
+================================================================================
+OpenAI Whisper (model weights)
+================================================================================
+MIT License
+Copyright (c) 2022 OpenAI
+https://github.com/openai/whisper
+
+================================================================================
+pywhispercpp
+================================================================================
+MIT License
+https://github.com/absadiki/pywhispercpp
+
+================================================================================
+pynput
+================================================================================
+LGPL-3.0 License
+https://github.com/moses-palmer/pynput
+
+This application uses pynput dynamically. The source code is available
+at the repository URL, allowing users to rebuild with modified versions
+as required by the LGPL.
+
+================================================================================
+rumps
+================================================================================
+BSD 3-Clause License
+Copyright (c) 2020, Jared Suttles
+https://github.com/jaredks/rumps
+
+================================================================================
+sounddevice
+================================================================================
+MIT License
+Copyright (c) 2015-2025 Matthias Geier
+https://github.com/spatialaudio/python-sounddevice
+
+================================================================================
+NumPy
+================================================================================
+BSD 3-Clause License
+Copyright (c) 2005-2025, NumPy Developers
+https://numpy.org
+
+================================================================================
+Pillow
+================================================================================
+MIT-CMU License (HPND)
+Copyright (c) Jeffrey A. Clark and contributors
+https://github.com/python-pillow/Pillow
+
+================================================================================
+PyInstaller
+================================================================================
+GPL-2.0 License with Bootloader Exception
+The PyInstaller bootloader exception allows bundling without copyleft requirements.
+https://pyinstaller.org
