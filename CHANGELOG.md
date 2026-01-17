@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-01-17
+
+### Fixed
+
+- Added macOS entitlements file for proper Accessibility and Microphone permissions
+- Enabled ad-hoc code signing in PyInstaller build for reliable permission handling
+- Fixed app bundle copying to preserve symlinks and code signatures (using `ditto` instead of `cp`)
+
+## [1.0.2] - 2026-01-17
+
+### Changed
+
+- Simplified release process to create DMG only (removed ZIP from releases)
+
+### Fixed
+
+- Updated permissions section in README for clarity and troubleshooting
+
+## [1.0.1] - 2026-01-17
+
+### Fixed
+
+- Updated version number in pyproject.toml
+
 ## [1.0.0] - 2026-01-17
 
 ### Added
@@ -25,5 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub release workflow for automated releases
 - Community files (LICENSE, CODE_OF_CONDUCT, SECURITY, CONTRIBUTING)
 
-[Unreleased]: https://github.com/albertsikkema/dictator/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/albertsikkema/dictator/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/albertsikkema/dictator/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/albertsikkema/dictator/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/albertsikkema/dictator/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/albertsikkema/dictator/releases/tag/v1.0.0
