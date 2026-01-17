@@ -100,8 +100,8 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 	@echo "[1/5] Building application..."
 	@$(MAKE) app
 	@echo ""
-	@echo "[2/5] Creating distribution archives..."
-	@$(MAKE) zip dmg
+	@echo "[2/5] Creating DMG..."
+	@$(MAKE) dmg
 	@echo ""
 	@echo "[3/5] Creating git tag $(TAG)..."
 	git tag -a $(TAG) -m "Release $(TAG)"
@@ -111,7 +111,6 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 	@echo ""
 	@echo "[5/5] Creating GitHub release..."
 	gh release create $(TAG) \
-		"$(ZIP_NAME)#$(APP_NAME) $(VERSION) (ZIP)" \
 		"$(DMG_NAME)#$(APP_NAME) $(VERSION) (DMG)" \
 		--title "$(APP_NAME) $(TAG)" \
 		--generate-notes
@@ -124,11 +123,10 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 
 release-draft: check-version check-clean check-on-main check-no-existing-tag check-gh-auth
 	@echo "Creating draft release for $(TAG)..."
-	@$(MAKE) app zip dmg
+	@$(MAKE) dmg
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)
 	gh release create $(TAG) \
-		"$(ZIP_NAME)#$(APP_NAME) $(VERSION) (ZIP)" \
 		"$(DMG_NAME)#$(APP_NAME) $(VERSION) (DMG)" \
 		--title "$(APP_NAME) $(TAG)" \
 		--generate-notes \

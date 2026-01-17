@@ -31,27 +31,12 @@ For building from source:
 
 ### Download (Recommended)
 
-1. Download `Dictator.app.zip` from [Releases](https://github.com/albertsikkema/dictator/releases)
-2. Unzip and move `Dictator.app` to `/Applications`
-3. Remove the quarantine attribute (required for unsigned apps):
-   ```bash
-   xattr -cr /Applications/Dictator.app
-   ```
-4. Open the app and grant permissions when prompted (see [Permissions](#permissions))
-
-#### Running Unsigned Apps
-
-Since Dictator is not signed with an Apple Developer certificate, macOS Gatekeeper will block it by default. Two workarounds:
-
-**Option 1: Remove Quarantine (Recommended)**
-```bash
-xattr -cr /Applications/Dictator.app
-```
-
-**Option 2: Right-click to Open**
-1. Right-click (or Control-click) on `Dictator.app`
-2. Select "Open" from the context menu
-3. Click "Open" in the security dialog
+1. Download the DMG from [Releases](https://github.com/albertsikkema/dictator/releases)
+2. Open the DMG and drag `Dictator.app` to `/Applications`
+3. **First launch** (required for unsigned apps):
+   - Right-click `Dictator.app` → select **Open**
+   - Click **Open** in the security dialog
+4. Grant permissions when prompted (see [Permissions](#permissions))
 
 ### From Source
 
