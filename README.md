@@ -2,17 +2,22 @@
 
 [![License](https://img.shields.io/badge/License-MIT%20with%20Commons%20Clause-blue.svg)](LICENSE)
 
-A minimal macOS menu bar app for push-to-talk speech-to-text transcription using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
+A lightweight, open-source macOS menu bar app for push-to-talk speech-to-text. Runs entirely on your Mac—no internet connection required, no data leaves your device.
 
 ## Features
 
-- **Push-to-talk**: Hold a hotkey to record, release to transcribe and paste
-- **Menu bar app**: Lives in your menu bar, not the dock
-- **Visual feedback**: Icon animates (red → orange → yellow) based on audio level
-- **Fast transcription**: Uses whisper.cpp with Metal GPU acceleration
-- **Configurable hotkey**: Choose between Right Option, Right Command, Left Option, or Left Command
+- **100% Local**: All processing happens on-device using [whisper.cpp](https://github.com/ggerganov/whisper.cpp)—your audio never leaves your Mac
+- **No Internet Required**: Works completely offline once installed
+- **Fast**: Metal GPU acceleration for near-instant transcription on Apple Silicon
+- **Lightweight**: Minimal resource usage, stays out of your way
+- **Non-obtrusive**: Lives quietly in your menu bar, not the dock
+- **Easy to Use**: Just hold a hotkey to record, release to transcribe and paste
+- **Push-to-talk**: Natural workflow—hold to speak, release to transcribe
+- **Visual Feedback**: Icon animates (red → orange → yellow) based on audio level
+- **Configurable**: Choose your preferred hotkey (Right Option, Right Command, Left Option, or Left Command)
 - **Auto-start**: Option to launch at login
 - **Self-contained**: Model bundled in the app (no external dependencies)
+- **Open Source**: MIT licensed with Commons Clause
 
 ## Requirements
 
