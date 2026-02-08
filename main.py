@@ -33,6 +33,18 @@ HOTKEY_OPTIONS = {
     "Left Command": (Key.cmd_l, {Key.cmd_l}, 55),
 }
 
+LANGUAGE_OPTIONS = {
+    "English": "en",
+    "Dutch": "nl",
+    "Auto-detect": "auto",
+}
+
+LANGUAGE_SHORT = {
+    "English": "EN",
+    "Dutch": "NL",
+    "Auto-detect": "Auto",
+}
+
 CONFIG_DIR = Path.home() / ".config" / "dictator"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 LAUNCH_AGENT_DIR = Path.home() / "Library" / "LaunchAgents"
@@ -49,7 +61,7 @@ def load_config() -> dict:
             return json.loads(CONFIG_FILE.read_text())
         except Exception as e:
             log.warning(f"Failed to load config, using defaults: {e}")
-    return {"hotkey": "Right Option", "auto_start": False}
+    return {"hotkey": "Right Option", "auto_start": False, "language": "English"}
 
 
 def save_config(config: dict) -> None:
@@ -132,7 +144,9 @@ class DictatorApp(rumps.App):
         self.menu.clear()
 
         # Status item (non-clickable)
-        self.status_item = rumps.MenuItem("Ready", callback=None)
+        lang_name = self.config.get("language", "English")
+        lang_short = LANGUAGE_SHORT.get(lang_name, "EN")
+        self.status_item = rumps.MenuItem(f"Ready ({lang_short})", callback=None)
         self.status_item.set_callback(None)
         self.menu.add(self.status_item)
         self.menu.add(rumps.separator)
@@ -144,6 +158,14 @@ class DictatorApp(rumps.App):
             item.state = 1 if name == self.config["hotkey"] else 0
             hotkey_menu.add(item)
         self.menu.add(hotkey_menu)
+
+        # Language submenu
+        language_menu = rumps.MenuItem("Language")
+        for name in LANGUAGE_OPTIONS:
+            item = rumps.MenuItem(name, callback=self.change_language)
+            item.state = 1 if name == self.config.get("language", "English") else 0
+            language_menu.add(item)
+        self.menu.add(language_menu)
 
         # Auto-start toggle
         self.auto_start_item = rumps.MenuItem("Start at Login", callback=self.toggle_auto_start)
@@ -165,6 +187,21 @@ class DictatorApp(rumps.App):
 
         # Restart listener with new hotkey
         self.start_hotkey_listener()
+
+    def change_language(self, sender: rumps.MenuItem) -> None:
+        """Change the transcription language."""
+        self.config["language"] = sender.title
+        save_config(self.config)
+
+        # Update menu checkmarks
+        for item in self.menu["Language"].values():
+            if isinstance(item, rumps.MenuItem):
+                item.state = 1 if item.title == sender.title else 0
+
+        # Update status to reflect new language
+        self.update_status("ready")
+
+        log.info(f"Language changed to: {sender.title}")
 
     def toggle_auto_start(self, sender: rumps.MenuItem) -> None:
         """Toggle auto-start at login."""
@@ -232,12 +269,14 @@ class DictatorApp(rumps.App):
 
     def update_status(self, status: str) -> None:
         """Update the status display."""
+        lang_name = self.config.get("language", "English")
+        lang_short = LANGUAGE_SHORT.get(lang_name, "EN")
         status_text = {
-            "ready": "Ready",
-            "listening": "Listening...",
+            "ready": f"Ready ({lang_short})",
+            "listening": f"Listening ({lang_short})...",
             "transcribing": "Transcribing...",
         }
-        self.status_item.title = status_text.get(status, "Ready")
+        self.status_item.title = status_text.get(status, f"Ready ({lang_short})")
 
         if status == "ready":
             self.icon = str(ICONS_DIR / "ready.png")
@@ -317,9 +356,18 @@ class DictatorApp(rumps.App):
     def _transcribe_and_paste(self, audio_path) -> None:
         """Transcribe audio and paste result (runs in background thread)."""
         try:
-            text = transcribe(audio_path)
+            lang_name = self.config.get("language", "English")
+            lang_code = LANGUAGE_OPTIONS.get(lang_name, "en")
+            text = transcribe(audio_path, language=lang_code)
             if text:
                 self.paste_text(text)
+        except FileNotFoundError as e:
+            log.error(f"Model not found: {e}")
+            rumps.notification(
+                title="Dictator",
+                subtitle="Model not found",
+                message="Run 'make install-model-multilingual' to download the multilingual model.",
+            )
         except Exception as e:
             log.error(f"Transcription failed: {e}")
         finally:
