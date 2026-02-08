@@ -1,4 +1,4 @@
-.PHONY: run lint format install app build clean zip dmg \
+.PHONY: run lint format install app build clean zip dmg install-model-multilingual \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
 	release release-draft
 
@@ -12,6 +12,13 @@ install-model:
 	@echo "Downloading English whisper model (ggml-small.en.bin ~466MB)..."
 	@curl -L -o $(MODEL_DIR)/ggml-small.en.bin \
 		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+	@echo "Done. Model installed to $(MODEL_DIR)"
+
+install-model-multilingual:
+	@mkdir -p $(MODEL_DIR)
+	@echo "Downloading multilingual whisper model (ggml-medium-q5_0.bin ~539MB)..."
+	@curl -L -o $(MODEL_DIR)/ggml-medium-q5_0.bin \
+		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin
 	@echo "Done. Model installed to $(MODEL_DIR)"
 
 app:
