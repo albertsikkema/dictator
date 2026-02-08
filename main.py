@@ -343,6 +343,9 @@ class DictatorApp(rumps.App):
         """Handle key press events."""
         try:
             log.debug(f"Key press: {key}")
+            # Guard against unbounded growth if key releases are missed
+            if len(self._pressed_keys) > 10:
+                self._pressed_keys.clear()
             self._pressed_keys.add(key)
 
             # Check for language cycle shortcut: Ctrl+Shift+L
