@@ -25,7 +25,7 @@ Reading the index first saves tokens and improves accuracy.
 This project maintains automatically generated codebase overview files in `memories/codebase/`:
 
 ### Available Index Files
-- `codebase_overview_root_py.md` - Python codebase overview (3 source files: main.py, audio.py, transcriber.py)
+- `codebase_overview_root_py.md` - Python codebase overview (4 source files: main.py, audio.py, transcriber.py, generate_icons.py)
 
 ### What These Files Contain
 Each overview file provides a comprehensive map of the codebase including:
