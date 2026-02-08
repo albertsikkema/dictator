@@ -348,7 +348,10 @@ class DictatorApp(rumps.App):
             # Check for language cycle shortcut: Ctrl+Shift+L
             has_ctrl = Key.ctrl_l in self._pressed_keys or Key.ctrl_r in self._pressed_keys
             has_shift = Key.shift_l in self._pressed_keys or Key.shift_r in self._pressed_keys
-            is_l = hasattr(key, "char") and key.char == "l"
+            # key.char may be None when Ctrl is held; fall back to vk code (37 = 'l' on macOS)
+            is_l = getattr(key, "char", None) in ("l", "\x0c")
+            if not is_l:
+                is_l = getattr(key, "vk", None) == 37
             if has_ctrl and has_shift and is_l:
                 self.cycle_language()
                 return
