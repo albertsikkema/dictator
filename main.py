@@ -189,15 +189,18 @@ class DictatorApp(rumps.App):
         # Restart listener with new hotkey
         self.start_hotkey_listener()
 
+    def _update_language_checkmarks(self, active_name: str) -> None:
+        """Update Language menu checkmarks to reflect the active language."""
+        for item in self.menu["Language"].values():
+            if isinstance(item, rumps.MenuItem):
+                item.state = 1 if item.title == active_name else 0
+
     def change_language(self, sender: rumps.MenuItem) -> None:
         """Change the transcription language."""
         self.config["language"] = sender.title
         save_config(self.config)
 
-        # Update menu checkmarks
-        for item in self.menu["Language"].values():
-            if isinstance(item, rumps.MenuItem):
-                item.state = 1 if item.title == sender.title else 0
+        self._update_language_checkmarks(sender.title)
 
         # Update status to reflect new language
         self.update_status("ready")
@@ -217,10 +220,7 @@ class DictatorApp(rumps.App):
         self.config["language"] = next_name
         save_config(self.config)
 
-        # Update menu checkmarks
-        for item in self.menu["Language"].values():
-            if isinstance(item, rumps.MenuItem):
-                item.state = 1 if item.title == next_name else 0
+        self._update_language_checkmarks(next_name)
 
         self.update_status("ready")
 
