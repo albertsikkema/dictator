@@ -81,6 +81,7 @@ class DictatorApp(rumps.App):
         self.keyboard_controller = KeyboardController()
         self.is_recording = False
         self.hotkey_pressed = False
+        self._pressed_keys = set()
         self.listener = None
 
         # Load icons
@@ -203,6 +204,34 @@ class DictatorApp(rumps.App):
 
         log.info(f"Language changed to: {sender.title}")
 
+    def cycle_language(self) -> None:
+        """Cycle to the next language option."""
+        names = list(LANGUAGE_OPTIONS.keys())
+        current = self.config.get("language", "English")
+        try:
+            idx = names.index(current)
+        except ValueError:
+            idx = 0
+        next_name = names[(idx + 1) % len(names)]
+
+        self.config["language"] = next_name
+        save_config(self.config)
+
+        # Update menu checkmarks
+        for item in self.menu["Language"].values():
+            if isinstance(item, rumps.MenuItem):
+                item.state = 1 if item.title == next_name else 0
+
+        self.update_status("ready")
+
+        lang_short = LANGUAGE_SHORT.get(next_name, "EN")
+        rumps.notification(
+            title="Dictator",
+            subtitle="Language Changed",
+            message=f"Now using: {next_name} ({lang_short})",
+        )
+        log.info(f"Language cycled to: {next_name}")
+
     def toggle_auto_start(self, sender: rumps.MenuItem) -> None:
         """Toggle auto-start at login."""
         self.config["auto_start"] = not self.config.get("auto_start", False)
@@ -314,6 +343,16 @@ class DictatorApp(rumps.App):
         """Handle key press events."""
         try:
             log.debug(f"Key press: {key}")
+            self._pressed_keys.add(key)
+
+            # Check for language cycle shortcut: Ctrl+Shift+L
+            has_ctrl = Key.ctrl_l in self._pressed_keys or Key.ctrl_r in self._pressed_keys
+            has_shift = Key.shift_l in self._pressed_keys or Key.shift_r in self._pressed_keys
+            is_l = hasattr(key, "char") and key.char == "l"
+            if has_ctrl and has_shift and is_l:
+                self.cycle_language()
+                return
+
             if self.is_hotkey(key):
                 log.info("Hotkey pressed!")
                 if self.hotkey_pressed:
@@ -332,6 +371,8 @@ class DictatorApp(rumps.App):
     def on_key_release(self, key) -> None:
         """Handle key release events."""
         try:
+            self._pressed_keys.discard(key)
+
             if self.is_hotkey(key):
                 self.hotkey_pressed = False
                 if not self.is_recording:
