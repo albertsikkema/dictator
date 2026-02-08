@@ -1,12 +1,19 @@
 """Transcription module using pywhispercpp."""
 
+import logging
 import sys
 from pathlib import Path
 
 from pywhispercpp.model import Model
 
+log = logging.getLogger(__name__)
+
 ENGLISH_MODEL = "ggml-small.en.bin"
 MULTILINGUAL_MODEL = "ggml-medium-q5_0.bin"  # 539 MB quantized; see model-choice doc
+
+# Auto-detect is constrained to these languages to avoid
+# misdetection (e.g. Danish, Romanian for Dutch speakers).
+AUTO_DETECT_LANGUAGES = ["en", "nl"]
 
 # Lazy-loaded model instance with tracking
 _model: Model | None = None
@@ -54,6 +61,18 @@ def get_model(language: str = "en") -> Model:
     return _model
 
 
+def _detect_language(model: Model, audio_path: Path) -> str:
+    """Detect language from audio, constrained to AUTO_DETECT_LANGUAGES."""
+    (_lang, _prob), all_probs = model.auto_detect_language(str(audio_path))
+    filtered = {lang: prob for lang, prob in all_probs.items() if lang in AUTO_DETECT_LANGUAGES}
+    chosen = max(filtered, key=filtered.get) if filtered else "en"
+    log.debug(
+        f"Language detection: whisper picked {_lang} ({_prob:.2f}), "
+        f"filtered to {chosen} (en={filtered.get('en', 0):.2f}, nl={filtered.get('nl', 0):.2f})"
+    )
+    return chosen
+
+
 def transcribe(audio_path: Path, language: str = "en") -> str:
     """Transcribe audio file using whisper.cpp.
 
@@ -70,11 +89,12 @@ def transcribe(audio_path: Path, language: str = "en") -> str:
     try:
         model = get_model(language)
 
-        # Build transcription kwargs
-        kwargs = {}
-        if language and language != "auto":
-            kwargs["language"] = language
+        # When auto-detecting, first detect language constrained to
+        # allowed languages, then transcribe with that language forced.
+        if language == "auto":
+            language = _detect_language(model, audio_path)
 
+        kwargs = {"translate": False, "language": language}
         segments = model.transcribe(str(audio_path), **kwargs)
 
         # Combine all segment texts

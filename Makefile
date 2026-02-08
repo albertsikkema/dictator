@@ -1,7 +1,6 @@
-.PHONY: run lint format install app build clean zip dmg install-model-multilingual \
+.PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
 	release release-draft
-
 MODEL_DIR = ~/.local/share/whisper-dictation
 
 run:
@@ -21,7 +20,11 @@ install-model-multilingual:
 		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin
 	@echo "Done. Model installed to $(MODEL_DIR)"
 
-app:
+generate-icons:
+	uv run python generate_icons.py
+
+app: generate-icons
+	@mkdir -p models
 	uv sync --extra dev
 	uv run pyinstaller Dictator.spec --noconfirm
 

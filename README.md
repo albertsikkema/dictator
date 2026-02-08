@@ -14,6 +14,7 @@ A lightweight, open-source macOS menu bar app for push-to-talk speech-to-text. R
 - **Easy to Use**: Just hold a hotkey to record, release to transcribe and paste
 - **Push-to-talk**: Natural workflow—hold to speak, release to transcribe
 - **Visual Feedback**: Icon animates (red → orange → yellow) based on audio level
+- **Multilingual**: Supports English, Dutch, and auto-detection between the two
 - **Configurable**: Choose your preferred hotkey (Right Option, Right Command, Left Option, or Left Command)
 - **Auto-start**: Option to launch at login
 - **Self-contained**: Model bundled in the app (no external dependencies)
@@ -63,9 +64,10 @@ For building from source:
    uv sync
    ```
 
-3. Download the whisper model (~466MB):
+3. Download a whisper model:
    ```bash
-   make install-model
+   make install-model              # English-only (~466MB)
+   make install-model-multilingual  # Multilingual (~539MB, required for Dutch / Auto-detect)
    ```
 
 4. Run the app:
@@ -106,7 +108,8 @@ This will:
 
 Click the menu bar icon to access:
 
-- **Hotkey**: Change the push-to-talk key
+- **Language**: Choose between English, Dutch, or Auto-detect (default)
+- **Hotkey**: Change the push-to-talk key (Right Option, Right Command, Left Option, or Left Command)
 - **Start at Login**: Enable/disable auto-start
 
 Settings are saved to `~/.config/dictator/config.json`.
@@ -177,12 +180,23 @@ make clean
 - **[sounddevice](https://python-sounddevice.readthedocs.io/)** - Audio capture
 - **[PyInstaller](https://pyinstaller.org/)** - App bundling
 
-## Model
+## Models
 
-The app uses the `ggml-small.en.bin` model (~466MB):
-- English-only, optimized for accuracy
-- Good for non-native English speakers
-- Uses Metal GPU acceleration on Apple Silicon
+The app supports two whisper.cpp models:
+
+| Model | File | Size | Languages | Install command |
+|-------|------|------|-----------|-----------------|
+| Small (English) | `ggml-small.en.bin` | ~466MB | English only | `make install-model` |
+| Medium (Multilingual) | `ggml-medium-q5_0.bin` | ~539MB | English, Dutch, Auto-detect | `make install-model-multilingual` |
+
+- The **English-only** model is loaded when the language is set to English
+- The **multilingual** model is loaded for Dutch or Auto-detect
+- Both models use Metal GPU acceleration on Apple Silicon
+- Models are stored in `~/.local/share/whisper-dictation/`
+
+### Auto-detect
+
+Auto-detect uses a two-pass approach: it first detects whether the audio is English or Dutch, then transcribes with that language forced. This prevents misdetection as similar-sounding languages (e.g. Danish). The multilingual model is required for auto-detect.
 
 ## Troubleshooting
 

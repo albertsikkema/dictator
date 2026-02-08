@@ -13,6 +13,7 @@ from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 
 from audio import AudioRecorder
+from generate_icons import generate_icons as _generate_icons
 from transcriber import transcribe
 
 # Setup logging to file for debugging
@@ -61,7 +62,7 @@ def load_config() -> dict:
             return json.loads(CONFIG_FILE.read_text())
         except Exception as e:
             log.warning(f"Failed to load config, using defaults: {e}")
-    return {"hotkey": "Right Option", "auto_start": False, "language": "English"}
+    return {"hotkey": "Right Option", "auto_start": False, "language": "Auto-detect"}
 
 
 def save_config(config: dict) -> None:
@@ -99,46 +100,7 @@ class DictatorApp(rumps.App):
     def load_icons(self) -> None:
         """Ensure icons directory exists and generate icons if needed."""
         if not ICONS_DIR.exists() or not (ICONS_DIR / "ready.png").exists():
-            self.generate_icons()
-
-    def generate_icons(self) -> None:
-        """Generate menu bar icons."""
-        from PIL import Image, ImageDraw
-
-        ICONS_DIR.mkdir(exist_ok=True)
-        size = 22  # Standard menu bar icon size
-
-        # Ready icon (gray circle)
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        padding = 4
-        draw.ellipse([padding, padding, size - padding, size - padding], fill=(100, 100, 100, 255))
-        img.save(ICONS_DIR / "ready.png")
-
-        # Transcribing icon (blue circle)
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        draw.ellipse([padding, padding, size - padding, size - padding], fill=(30, 136, 229, 255))
-        img.save(ICONS_DIR / "transcribing.png")
-
-        # Recording icons at different levels (red -> orange -> yellow)
-        for i in range(6):
-            level = i / 5.0
-            img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(img)
-
-            # Color: red -> orange -> yellow
-            r = 229
-            g = int(57 + level * 198)
-            b = int(53 - level * 53)
-
-            # Size based on level
-            level_padding = int(padding - level * 2)
-            draw.ellipse(
-                [level_padding, level_padding, size - level_padding, size - level_padding],
-                fill=(r, g, b, 255),
-            )
-            img.save(ICONS_DIR / f"recording_{i}.png")
+            _generate_icons()
 
     def build_menu(self) -> None:
         """Build the menu."""
