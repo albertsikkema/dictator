@@ -353,7 +353,8 @@ class DictatorApp(rumps.App):
             if not is_l:
                 is_l = getattr(key, "vk", None) == 37
             if has_ctrl and has_shift and is_l:
-                self.cycle_language()
+                # Dispatch to main thread — rumps UI is not thread-safe
+                rumps.Timer(lambda _: self.cycle_language(), 0).start()
                 return
 
             if self.is_hotkey(key):
