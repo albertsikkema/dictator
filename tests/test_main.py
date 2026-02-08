@@ -44,6 +44,10 @@ import main  # noqa: E402
 _original_config_dir = main.CONFIG_DIR
 _original_config_file = main.CONFIG_FILE
 _original_icons_dir = main.ICONS_DIR
+_original_launch_agent_dir = main.LAUNCH_AGENT_DIR
+_original_launch_agent_file = main.LAUNCH_AGENT_FILE
+_original_key = main.Key
+_original_hotkey_options = main.HOTKEY_OPTIONS
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +123,10 @@ def app(tmp_path):
     main.CONFIG_DIR = _original_config_dir
     main.CONFIG_FILE = _original_config_file
     main.ICONS_DIR = _original_icons_dir
+    main.LAUNCH_AGENT_DIR = _original_launch_agent_dir
+    main.LAUNCH_AGENT_FILE = _original_launch_agent_file
+    main.Key = _original_key
+    main.HOTKEY_OPTIONS = _original_hotkey_options
 
 
 # ---------------------------------------------------------------------------
@@ -127,43 +135,49 @@ def app(tmp_path):
 
 
 class TestLoadConfig:
-    def test_load_config_default(self, tmp_path):
+    def test_load_config_default(self, tmp_path, monkeypatch):
         """No config file exists — returns default dict."""
-        main.CONFIG_FILE = tmp_path / "nonexistent" / "config.json"
+        monkeypatch.setattr(main, "CONFIG_FILE", tmp_path / "nonexistent" / "config.json")
         result = main.load_config()
         assert result == {"hotkey": "Right Option", "auto_start": False, "language": "Auto-detect"}
 
-    def test_load_config_existing(self, tmp_path):
+    def test_load_config_existing(self, tmp_path, monkeypatch):
         """Config file exists — returns its contents."""
-        main.CONFIG_FILE = tmp_path / "config.json"
+        config_file = tmp_path / "config.json"
         config = {"hotkey": "Left Option", "auto_start": True, "language": "Dutch"}
-        main.CONFIG_FILE.write_text(json.dumps(config))
+        config_file.write_text(json.dumps(config))
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         result = main.load_config()
         assert result == config
 
-    def test_load_config_corrupt_json(self, tmp_path):
+    def test_load_config_corrupt_json(self, tmp_path, monkeypatch):
         """Corrupt JSON — returns defaults and logs warning."""
-        main.CONFIG_FILE = tmp_path / "config.json"
-        main.CONFIG_FILE.write_text("{invalid json")
+        config_file = tmp_path / "config.json"
+        config_file.write_text("{invalid json")
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         result = main.load_config()
         assert result == {"hotkey": "Right Option", "auto_start": False, "language": "Auto-detect"}
 
 
 class TestSaveConfig:
-    def test_save_config(self, tmp_path):
+    def test_save_config(self, tmp_path, monkeypatch):
         """Verify config is written correctly."""
-        main.CONFIG_DIR = tmp_path / "config"
-        main.CONFIG_FILE = main.CONFIG_DIR / "config.json"
+        config_dir = tmp_path / "config"
+        config_file = config_dir / "config.json"
+        monkeypatch.setattr(main, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         config = {"hotkey": "Right Option", "auto_start": False}
         main.save_config(config)
-        assert json.loads(main.CONFIG_FILE.read_text()) == config
+        assert json.loads(config_file.read_text()) == config
 
-    def test_save_config_creates_directory(self, tmp_path):
+    def test_save_config_creates_directory(self, tmp_path, monkeypatch):
         """Verify CONFIG_DIR is created."""
-        main.CONFIG_DIR = tmp_path / "newdir"
-        main.CONFIG_FILE = main.CONFIG_DIR / "config.json"
+        config_dir = tmp_path / "newdir"
+        config_file = config_dir / "config.json"
+        monkeypatch.setattr(main, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         main.save_config({"test": True})
-        assert main.CONFIG_DIR.exists()
+        assert config_dir.exists()
 
 
 # ---------------------------------------------------------------------------
