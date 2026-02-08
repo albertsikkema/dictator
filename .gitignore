@@ -74,6 +74,4 @@ logs/
 .env
 .env.local
 .claude/
-claude-helpers/
-.env.claude
-thoughts/
+memories/

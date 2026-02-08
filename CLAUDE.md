@@ -2,6 +2,31 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
+## Codebase Overview Files
+
+This project maintains automatically generated codebase overview files in `memories/codebase/`:
+
+### Available Index Files
+- `codebase_overview_root_py.md` - Python codebase overview (3 source files: main.py, audio.py, transcriber.py)
+
+### What These Files Contain
+Each overview file provides a comprehensive map of the codebase including:
+- **Most Used Symbols**: Top functions/classes ranked by usage count
+- **All classes and functions** with descriptions and line numbers
+- **Full function signatures**: input parameters, return types, and expected outputs
+- **Call relationships**: where each function/class is called from (caller information)
+- **API Endpoints**: All REST API routes (if applicable)
+- **Dependency Graph**: Which files are most imported
+
+**IMPORTANT**: Before searching the codebase with Grep, Glob, or Explore, first read the codebase index. Reading the index first saves tokens and improves accuracy.
+
+### Regenerating Indexes
+To regenerate the codebase overview files, run:
+```
+/index_codebase
+```
+
 ## Build & Run Commands
 
 ```bash
