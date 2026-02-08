@@ -1,7 +1,6 @@
-.PHONY: run lint format install app build clean zip dmg \
+.PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
-	release release-draft
-
+	release release-draft test
 MODEL_DIR = ~/.local/share/whisper-dictation
 
 run:
@@ -14,7 +13,18 @@ install-model:
 		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
 	@echo "Done. Model installed to $(MODEL_DIR)"
 
-app:
+install-model-multilingual:
+	@mkdir -p $(MODEL_DIR)
+	@echo "Downloading multilingual whisper model (ggml-medium-q5_0.bin ~539MB)..."
+	@curl -L -o $(MODEL_DIR)/ggml-medium-q5_0.bin \
+		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin
+	@echo "Done. Model installed to $(MODEL_DIR)"
+
+generate-icons:
+	uv run python generate_icons.py
+
+app: generate-icons
+	@mkdir -p models
 	uv sync --extra dev
 	uv run pyinstaller Dictator.spec --noconfirm
 
@@ -29,6 +39,11 @@ lint:
 
 format:
 	uv run ruff format .
+
+test:
+	uv run --extra test pytest --cov --cov-report=term-missing --cov-report=json
+	uv run --extra test python scripts/check_coverage.py
+	@rm -f coverage.json
 
 clean:
 	rm -rf build dist __pycache__ *.egg-info

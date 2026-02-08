@@ -13,6 +13,7 @@ from pynput.keyboard import Controller as KeyboardController
 from pynput.keyboard import Key
 
 from audio import AudioRecorder
+from generate_icons import generate_icons as _generate_icons
 from transcriber import transcribe
 
 # Setup logging to file for debugging
@@ -33,6 +34,18 @@ HOTKEY_OPTIONS = {
     "Left Command": (Key.cmd_l, {Key.cmd_l}, 55),
 }
 
+LANGUAGE_OPTIONS = {
+    "English": "en",
+    "Dutch": "nl",
+    "Auto-detect": "auto",
+}
+
+LANGUAGE_SHORT = {
+    "English": "EN",
+    "Dutch": "NL",
+    "Auto-detect": "Auto",
+}
+
 CONFIG_DIR = Path.home() / ".config" / "dictator"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 LAUNCH_AGENT_DIR = Path.home() / "Library" / "LaunchAgents"
@@ -49,7 +62,7 @@ def load_config() -> dict:
             return json.loads(CONFIG_FILE.read_text())
         except Exception as e:
             log.warning(f"Failed to load config, using defaults: {e}")
-    return {"hotkey": "Right Option", "auto_start": False}
+    return {"hotkey": "Right Option", "auto_start": False, "language": "Auto-detect"}
 
 
 def save_config(config: dict) -> None:
@@ -69,6 +82,7 @@ class DictatorApp(rumps.App):
         self.keyboard_controller = KeyboardController()
         self.is_recording = False
         self.hotkey_pressed = False
+        self._pressed_keys = set()
         self.listener = None
 
         # Load icons
@@ -86,53 +100,16 @@ class DictatorApp(rumps.App):
     def load_icons(self) -> None:
         """Ensure icons directory exists and generate icons if needed."""
         if not ICONS_DIR.exists() or not (ICONS_DIR / "ready.png").exists():
-            self.generate_icons()
-
-    def generate_icons(self) -> None:
-        """Generate menu bar icons."""
-        from PIL import Image, ImageDraw
-
-        ICONS_DIR.mkdir(exist_ok=True)
-        size = 22  # Standard menu bar icon size
-
-        # Ready icon (gray circle)
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        padding = 4
-        draw.ellipse([padding, padding, size - padding, size - padding], fill=(100, 100, 100, 255))
-        img.save(ICONS_DIR / "ready.png")
-
-        # Transcribing icon (blue circle)
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        draw.ellipse([padding, padding, size - padding, size - padding], fill=(30, 136, 229, 255))
-        img.save(ICONS_DIR / "transcribing.png")
-
-        # Recording icons at different levels (red -> orange -> yellow)
-        for i in range(6):
-            level = i / 5.0
-            img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(img)
-
-            # Color: red -> orange -> yellow
-            r = 229
-            g = int(57 + level * 198)
-            b = int(53 - level * 53)
-
-            # Size based on level
-            level_padding = int(padding - level * 2)
-            draw.ellipse(
-                [level_padding, level_padding, size - level_padding, size - level_padding],
-                fill=(r, g, b, 255),
-            )
-            img.save(ICONS_DIR / f"recording_{i}.png")
+            _generate_icons()
 
     def build_menu(self) -> None:
         """Build the menu."""
         self.menu.clear()
 
         # Status item (non-clickable)
-        self.status_item = rumps.MenuItem("Ready", callback=None)
+        lang_name = self.config.get("language", "English")
+        lang_short = LANGUAGE_SHORT.get(lang_name, "EN")
+        self.status_item = rumps.MenuItem(f"Ready ({lang_short})", callback=None)
         self.status_item.set_callback(None)
         self.menu.add(self.status_item)
         self.menu.add(rumps.separator)
@@ -144,6 +121,14 @@ class DictatorApp(rumps.App):
             item.state = 1 if name == self.config["hotkey"] else 0
             hotkey_menu.add(item)
         self.menu.add(hotkey_menu)
+
+        # Language submenu
+        language_menu = rumps.MenuItem("Language")
+        for name in LANGUAGE_OPTIONS:
+            item = rumps.MenuItem(name, callback=self.change_language)
+            item.state = 1 if name == self.config.get("language", "English") else 0
+            language_menu.add(item)
+        self.menu.add(language_menu)
 
         # Auto-start toggle
         self.auto_start_item = rumps.MenuItem("Start at Login", callback=self.toggle_auto_start)
@@ -165,6 +150,49 @@ class DictatorApp(rumps.App):
 
         # Restart listener with new hotkey
         self.start_hotkey_listener()
+
+    def _update_language_checkmarks(self, active_name: str) -> None:
+        """Update Language menu checkmarks to reflect the active language."""
+        for item in self.menu["Language"].values():
+            if isinstance(item, rumps.MenuItem):
+                item.state = 1 if item.title == active_name else 0
+
+    def change_language(self, sender: rumps.MenuItem) -> None:
+        """Change the transcription language."""
+        self.config["language"] = sender.title
+        save_config(self.config)
+
+        self._update_language_checkmarks(sender.title)
+
+        # Update status to reflect new language
+        self.update_status("ready")
+
+        log.info(f"Language changed to: {sender.title}")
+
+    def cycle_language(self) -> None:
+        """Cycle to the next language option."""
+        names = list(LANGUAGE_OPTIONS.keys())
+        current = self.config.get("language", "English")
+        try:
+            idx = names.index(current)
+        except ValueError:
+            idx = 0
+        next_name = names[(idx + 1) % len(names)]
+
+        self.config["language"] = next_name
+        save_config(self.config)
+
+        self._update_language_checkmarks(next_name)
+
+        self.update_status("ready")
+
+        lang_short = LANGUAGE_SHORT.get(next_name, "EN")
+        rumps.notification(
+            title="Dictator",
+            subtitle="Language Changed",
+            message=f"Now using: {next_name} ({lang_short})",
+        )
+        log.info(f"Language cycled to: {next_name}")
 
     def toggle_auto_start(self, sender: rumps.MenuItem) -> None:
         """Toggle auto-start at login."""
@@ -232,12 +260,14 @@ class DictatorApp(rumps.App):
 
     def update_status(self, status: str) -> None:
         """Update the status display."""
+        lang_name = self.config.get("language", "English")
+        lang_short = LANGUAGE_SHORT.get(lang_name, "EN")
         status_text = {
-            "ready": "Ready",
-            "listening": "Listening...",
+            "ready": f"Ready ({lang_short})",
+            "listening": f"Listening ({lang_short})...",
             "transcribing": "Transcribing...",
         }
-        self.status_item.title = status_text.get(status, "Ready")
+        self.status_item.title = status_text.get(status, f"Ready ({lang_short})")
 
         if status == "ready":
             self.icon = str(ICONS_DIR / "ready.png")
@@ -275,6 +305,23 @@ class DictatorApp(rumps.App):
         """Handle key press events."""
         try:
             log.debug(f"Key press: {key}")
+            # Guard against unbounded growth if key releases are missed
+            if len(self._pressed_keys) > 10:
+                self._pressed_keys.clear()
+            self._pressed_keys.add(key)
+
+            # Check for language cycle shortcut: Ctrl+Shift+L
+            has_ctrl = Key.ctrl_l in self._pressed_keys or Key.ctrl_r in self._pressed_keys
+            has_shift = Key.shift_l in self._pressed_keys or Key.shift_r in self._pressed_keys
+            # key.char may be None when Ctrl is held; fall back to vk code (37 = 'l' on macOS)
+            is_l = getattr(key, "char", None) in ("l", "\x0c")
+            if not is_l:
+                is_l = getattr(key, "vk", None) == 37
+            if has_ctrl and has_shift and is_l:
+                # Dispatch to main thread — rumps UI is not thread-safe
+                rumps.Timer(lambda _: self.cycle_language(), 0).start()
+                return
+
             if self.is_hotkey(key):
                 log.info("Hotkey pressed!")
                 if self.hotkey_pressed:
@@ -293,6 +340,8 @@ class DictatorApp(rumps.App):
     def on_key_release(self, key) -> None:
         """Handle key release events."""
         try:
+            self._pressed_keys.discard(key)
+
             if self.is_hotkey(key):
                 self.hotkey_pressed = False
                 if not self.is_recording:
@@ -317,9 +366,18 @@ class DictatorApp(rumps.App):
     def _transcribe_and_paste(self, audio_path) -> None:
         """Transcribe audio and paste result (runs in background thread)."""
         try:
-            text = transcribe(audio_path)
+            lang_name = self.config.get("language", "English")
+            lang_code = LANGUAGE_OPTIONS.get(lang_name, "en")
+            text = transcribe(audio_path, language=lang_code)
             if text:
                 self.paste_text(text)
+        except FileNotFoundError as e:
+            log.error(f"Model not found: {e}")
+            rumps.notification(
+                title="Dictator",
+                subtitle="Model not found",
+                message="Run 'make install-model-multilingual' to download the multilingual model.",
+            )
         except Exception as e:
             log.error(f"Transcription failed: {e}")
         finally:
