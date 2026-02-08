@@ -16,6 +16,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pyinstaller>=6.0"]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "pytest-mock>=3.12",
+]
 
 [tool.ruff]
 line-length = 100
@@ -28,3 +33,18 @@ ignore = []
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["main", "audio", "transcriber", "generate_icons"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "if __name__",
+    "pragma: no cover",
+]

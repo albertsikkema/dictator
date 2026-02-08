@@ -1,6 +1,6 @@
 .PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
-	release release-draft
+	release release-draft test
 MODEL_DIR = ~/.local/share/whisper-dictation
 
 run:
@@ -39,6 +39,11 @@ lint:
 
 format:
 	uv run ruff format .
+
+test:
+	uv run --extra test pytest --cov --cov-report=term-missing --cov-report=json
+	uv run --extra test python scripts/check_coverage.py
+	@rm -f coverage.json
 
 clean:
 	rm -rf build dist __pycache__ *.egg-info
