@@ -6,7 +6,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT with Commons Clause"}
 dependencies = [
-    "pynput>=1.7; sys_platform == 'darwin'",
+    # main.py wraps pynput's private _create_event_tap; check it on upgrade
+    "pynput>=1.7,<1.9; sys_platform == 'darwin'",
+    "pyobjc-framework-applicationservices>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-avfoundation>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-cocoa>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-quartz>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-servicemanagement>=10.0; sys_platform == 'darwin'",
     "sounddevice>=0.4; sys_platform == 'darwin'",
     "numpy>=1.24",
     "pywhispercpp>=1.4",
@@ -39,7 +45,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.coverage.run]
-source = ["main", "audio", "transcriber", "generate_icons"]
+source = ["main", "macos", "audio", "transcriber", "generate_icons"]
 
 [tool.coverage.report]
 fail_under = 80

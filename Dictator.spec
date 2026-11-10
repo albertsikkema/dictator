@@ -1,8 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import tomllib
+
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files, collect_submodules
 
 block_cipher = None
+
+with open(os.path.join(SPECPATH, 'pyproject.toml'), 'rb') as f:
+    version = tomllib.load(f)['project']['version']
+
+# A stable identity keeps macOS privacy permissions valid across rebuilds;
+# ad-hoc ('-') signatures change with every build. Set by `make app`.
+codesign_identity = os.environ.get('DICTATOR_SIGN_IDENTITY') or '-'
 
 # Collect pywhispercpp binaries and data
 pywhispercpp_binaries = collect_dynamic_libs('pywhispercpp')
@@ -69,7 +79,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity='-',  # Ad-hoc sign
+    codesign_identity=codesign_identity,
     entitlements_file='Dictator.entitlements',
 )
 
@@ -91,8 +101,8 @@ app = BUNDLE(
     bundle_identifier='com.dictator.app',
     info_plist={
         'NSMicrophoneUsageDescription': 'Dictator needs microphone access to record speech for transcription.',
-        'NSAppleEventsUsageDescription': 'Dictator needs accessibility access to paste transcribed text.',
-        'CFBundleShortVersionString': '0.1.0',
+        'CFBundleShortVersionString': version,
+        'CFBundleVersion': version,
         'LSUIElement': True,  # Hide from dock (menu bar style app)
     },
 )

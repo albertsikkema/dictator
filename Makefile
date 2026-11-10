@@ -1,24 +1,42 @@
 .PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
+	install-models notarize \
+	reset-permissions \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
 	release release-draft test
-MODEL_DIR = ~/.local/share/whisper-dictation
+MODEL_DIR = $(HOME)/.local/share/whisper-dictation
+MODEL_URL = https://huggingface.co/ggerganov/whisper.cpp/resolve/main
+BUNDLE_ID = com.dictator.app
+
+# Code signing identity: a self-signed certificate in the login keychain, or
+# a "Developer ID Application: ..." certificate for builds others can open.
+# Without one the app is signed ad hoc, and macOS drops its permissions on
+# every rebuild. See "Code signing" in README.md.
+SIGN_IDENTITY ?= Dictator Local Signing
+
+# notarytool credentials, stored once with `xcrun notarytool store-credentials`
+NOTARY_PROFILE ?= dictator-notary
+
+# Releases signed with a Developer ID are notarized; others are not
+ifneq (,$(findstring Developer ID Application,$(SIGN_IDENTITY)))
+RELEASE_DMG_TARGET := notarize
+else
+RELEASE_DMG_TARGET := dmg
+endif
 
 run:
 	uv run python main.py
 
-install-model:
-	@mkdir -p $(MODEL_DIR)
-	@echo "Downloading English whisper model (ggml-small.en.bin ~466MB)..."
-	@curl -L -o $(MODEL_DIR)/ggml-small.en.bin \
-		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
-	@echo "Done. Model installed to $(MODEL_DIR)"
+# Models are file targets, so make skips any that are already downloaded
+install-model: $(MODEL_DIR)/ggml-small.en.bin            # English, ~466MB
+install-model-multilingual: $(MODEL_DIR)/ggml-medium-q5_0.bin  # Dutch/Auto, ~539MB
+install-models: install-model install-model-multilingual
 
-install-model-multilingual:
+$(MODEL_DIR)/%.bin:
 	@mkdir -p $(MODEL_DIR)
-	@echo "Downloading multilingual whisper model (ggml-medium-q5_0.bin ~539MB)..."
-	@curl -L -o $(MODEL_DIR)/ggml-medium-q5_0.bin \
-		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin
-	@echo "Done. Model installed to $(MODEL_DIR)"
+	@echo "Downloading whisper model $*.bin..."
+	@curl -fL --retry 2 -o $@.part $(MODEL_URL)/$*.bin
+	@mv $@.part $@
+	@echo "Done. Model installed to $@"
 
 generate-icons:
 	uv run python generate_icons.py
@@ -26,13 +44,25 @@ generate-icons:
 app: generate-icons
 	@mkdir -p models
 	uv sync --extra dev
-	uv run pyinstaller Dictator.spec --noconfirm
+	@if security find-identity -p codesigning 2>/dev/null | grep -qF '"$(SIGN_IDENTITY)"'; then \
+		echo "Signing with \"$(SIGN_IDENTITY)\""; \
+		DICTATOR_SIGN_IDENTITY="$(SIGN_IDENTITY)" uv run pyinstaller Dictator.spec --noconfirm; \
+	else \
+		echo "Warning: signing identity \"$(SIGN_IDENTITY)\" not found, signing ad hoc."; \
+		echo "macOS will drop Dictator's permissions after this build (see README.md)."; \
+		uv run pyinstaller Dictator.spec --noconfirm; \
+	fi
 
-build: app
+build: app install-models
 	@rm -rf /Applications/Dictator.app
 	@ditto dist/Dictator.app /Applications/Dictator.app
 	@echo "Installed to /Applications/Dictator.app"
-	@echo "Note: Remove app from Accessibility settings and re-add after each build"
+
+# Forget Dictator's privacy permissions, e.g. after an ad-hoc signed rebuild
+reset-permissions:
+	-tccutil reset Accessibility $(BUNDLE_ID)
+	-tccutil reset ListenEvent $(BUNDLE_ID)
+	-tccutil reset Microphone $(BUNDLE_ID)
 
 lint:
 	uv run ruff check .
@@ -71,6 +101,13 @@ dmg: app
 	hdiutil create -volname "$(APP_NAME)" -srcfolder $(DIST_DIR)/$(APP_NAME).app \
 		-ov -format UDZO $(DMG_NAME)
 	@echo "Created $(DMG_NAME) ($$(du -h $(DMG_NAME) | cut -f1))"
+
+# Sign, notarize and staple the DMG (needs a Developer ID SIGN_IDENTITY)
+notarize: dmg
+	codesign --force --timestamp --sign "$(SIGN_IDENTITY)" $(DMG_NAME)
+	xcrun notarytool submit $(DMG_NAME) --keychain-profile "$(NOTARY_PROFILE)" --wait
+	xcrun stapler staple $(DMG_NAME)
+	spctl --assess --type open --context context:primary-signature --verbose $(DMG_NAME)
 
 # === Pre-release Checks ===
 check-version:
@@ -130,7 +167,7 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 	@$(MAKE) app
 	@echo ""
 	@echo "[2/6] Creating DMG..."
-	@$(MAKE) dmg
+	@$(MAKE) $(RELEASE_DMG_TARGET)
 	@echo ""
 	@echo "[3/6] Extracting release notes from CHANGELOG.md..."
 	$(extract_changelog)
@@ -157,7 +194,7 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 
 release-draft: check-version check-clean check-on-main check-no-existing-tag check-gh-auth
 	@echo "Creating draft release for $(TAG)..."
-	@$(MAKE) dmg
+	@$(MAKE) $(RELEASE_DMG_TARGET)
 	$(extract_changelog)
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)

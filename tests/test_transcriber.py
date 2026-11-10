@@ -72,7 +72,7 @@ def test_get_model_path_local_share(tmp_path, reset_transcriber_globals):
 
     with (
         patch.object(transcriber, "__file__", str(tmp_path / "nonexistent" / "transcriber.py")),
-        patch.object(Path, "home", return_value=tmp_path),
+        patch.object(transcriber, "MODEL_DIR", local_dir),
     ):
         result = transcriber.get_model_path(transcriber.ENGLISH_MODEL)
         assert result == model_file
@@ -83,10 +83,74 @@ def test_get_model_path_not_found(tmp_path, reset_transcriber_globals):
     transcriber = reset_transcriber_globals
     with (
         patch.object(transcriber, "__file__", str(tmp_path / "nonexistent" / "transcriber.py")),
-        patch.object(Path, "home", return_value=tmp_path),
+        patch.object(transcriber, "MODEL_DIR", tmp_path / "models"),
     ):
         with pytest.raises(FileNotFoundError, match="Model not found"):
             transcriber.get_model_path(transcriber.ENGLISH_MODEL)
+
+
+# --- model_for_language / is_model_installed / download_model tests ---
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [("en", "ENGLISH_MODEL"), ("nl", "MULTILINGUAL_MODEL"), ("auto", "MULTILINGUAL_MODEL")],
+)
+def test_model_for_language(language, expected, reset_transcriber_globals):
+    """English uses the English-only model, everything else the multilingual one."""
+    transcriber = reset_transcriber_globals
+    assert transcriber.model_for_language(language) == getattr(transcriber, expected)
+
+
+def test_is_model_installed(tmp_path, reset_transcriber_globals):
+    """True only once the model file exists in MODEL_DIR."""
+    transcriber = reset_transcriber_globals
+    with (
+        patch.object(transcriber, "__file__", str(tmp_path / "nonexistent" / "transcriber.py")),
+        patch.object(transcriber, "MODEL_DIR", tmp_path),
+    ):
+        assert transcriber.is_model_installed(transcriber.ENGLISH_MODEL) is False
+        (tmp_path / transcriber.ENGLISH_MODEL).write_text("fake model")
+        assert transcriber.is_model_installed(transcriber.ENGLISH_MODEL) is True
+
+
+def test_download_model_success(tmp_path, reset_transcriber_globals):
+    """curl downloads to a .part file, which is renamed once complete."""
+    transcriber = reset_transcriber_globals
+    model_dir = tmp_path / "models"
+
+    def fake_curl(args, check):
+        Path(args[args.index("-o") + 1]).write_text("model data")
+
+    with (
+        patch.object(transcriber, "MODEL_DIR", model_dir),
+        patch.object(transcriber.subprocess, "run", side_effect=fake_curl) as mock_run,
+    ):
+        result = transcriber.download_model(transcriber.ENGLISH_MODEL)
+
+    assert result == model_dir / transcriber.ENGLISH_MODEL
+    assert result.read_text() == "model data"
+    assert not (model_dir / f"{transcriber.ENGLISH_MODEL}.part").exists()
+    assert mock_run.call_args.args[0][-1].endswith(transcriber.ENGLISH_MODEL)
+
+
+def test_download_model_failure_leaves_no_file(tmp_path, reset_transcriber_globals):
+    """A failed download removes the partial file and raises."""
+    transcriber = reset_transcriber_globals
+    model_dir = tmp_path / "models"
+
+    def failing_curl(args, check):
+        Path(args[args.index("-o") + 1]).write_text("partial")
+        raise transcriber.subprocess.CalledProcessError(22, args)
+
+    with (
+        patch.object(transcriber, "MODEL_DIR", model_dir),
+        patch.object(transcriber.subprocess, "run", side_effect=failing_curl),
+    ):
+        with pytest.raises(transcriber.subprocess.CalledProcessError):
+            transcriber.download_model(transcriber.ENGLISH_MODEL)
+
+    assert list(model_dir.iterdir()) == []
 
 
 def test_get_model_path_frozen(tmp_path, reset_transcriber_globals):

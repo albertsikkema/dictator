@@ -64,9 +64,10 @@ For building from source:
    uv sync
    ```
 
-3. Download a whisper model:
+3. Download the whisper models (optional: the app downloads the one it needs on first use):
    ```bash
-   make install-model              # English-only (~466MB)
+   make install-models              # both, skips any already downloaded
+   make install-model               # English-only (~466MB)
    make install-model-multilingual  # Multilingual (~539MB, required for Dutch / Auto-detect)
    ```
 
@@ -83,10 +84,48 @@ To build a standalone macOS app:
 make build
 ```
 
-This will:
-- Build the app with PyInstaller
-- Bundle the whisper model inside the app
-- Install to `/Applications/Dictator.app`
+This builds the app with PyInstaller, downloads both whisper models to
+`~/.local/share/whisper-dictation/` if they are missing (~1 GB the first
+time), and installs the app to `/Applications/Dictator.app`.
+
+#### Code signing
+
+macOS ties privacy permissions to the app's code signature. Without a
+signing certificate the app is signed ad hoc, which produces a new
+signature on every build, so macOS silently drops Dictator's permissions
+after each `make build`. Sign with either a self-signed certificate (for
+your own Mac) or an Apple Developer ID (for builds others can open
+without security warnings).
+
+**Self-signed certificate** - create it once:
+
+1. Open **Keychain Access** and choose **Keychain Access > Certificate Assistant > Create a Certificate...**
+2. Name: `Dictator Local Signing`, Identity Type: **Self Signed Root**, Certificate Type: **Code Signing**, then **Create**
+3. Double-click the new certificate, open **Trust** and set **Code Signing** to **Always Trust**
+
+`make build` uses it automatically when present (another name works with
+`make build SIGN_IDENTITY="Your Name"`). Grant the permissions once more
+after the first signed build; they then survive rebuilds. With an ad-hoc
+build, run `make reset-permissions` and grant them again after every build.
+
+**Apple Developer ID** - requires a paid Apple Developer account:
+
+1. Create a **Developer ID Application** certificate: in Xcode, **Settings > Accounts**, select your team, **Manage Certificates... > + > Developer ID Application**
+2. Find its exact name: `security find-identity -v -p codesigning`
+3. Store notarization credentials once, using an app-specific password from [account.apple.com](https://account.apple.com):
+   ```bash
+   xcrun notarytool store-credentials dictator-notary \
+       --apple-id you@example.com --team-id YOURTEAMID
+   ```
+4. Build with it, e.g. by exporting it in your shell profile:
+   ```bash
+   export SIGN_IDENTITY="Developer ID Application: Your Name (YOURTEAMID)"
+   make build          # local install, hardened runtime, no notarization
+   make notarize       # signed, notarized and stapled DMG in releases/
+   ```
+
+With a Developer ID identity, `make release` and `make release-draft`
+publish the notarized DMG.
 
 ## Usage
 
@@ -108,42 +147,55 @@ This will:
 
 Click the menu bar icon to access:
 
-- **Language**: Choose between English, Dutch, or Auto-detect (default)
 - **Hotkey**: Change the push-to-talk key (Right Option, Right Command, Left Option, or Left Command)
+- **Language**: Choose between English, Dutch, or Auto-detect (default). **Ctrl+Shift+L** cycles through them
+- **Models**: A check means installed; click a missing model to download it
+- **Permissions**: Shows whether each permission is granted; click one to open its System Settings pane
+- **Copy Last Transcription**: Put the last transcription back on the clipboard, e.g. when a paste went to the wrong place
 - **Start at Login**: Enable/disable auto-start
+
+The first line of the menu shows the status. Instead of "Ready" it shows a
+missing permission or the last error, until the next recording.
+
+After pasting, Dictator restores what was on the clipboard before.
 
 Settings are saved to `~/.config/dictator/config.json`.
 
 ## Permissions
 
-Dictator needs two permissions to function:
+Dictator needs three permissions. At startup it asks macOS to prompt for
+any that are missing, and the **Permissions** menu shows their state.
 
-### Microphone
-- macOS will prompt automatically on first recording
-- Click **Allow** when asked
+| Permission | Needed for | System Settings > Privacy & Security |
+|------------|------------|--------------------------------------|
+| Input Monitoring | Noticing the hotkey | Input Monitoring |
+| Accessibility | Pasting (simulated Cmd+V) | Accessibility |
+| Microphone | Recording | Microphone |
 
-### Accessibility (required for hotkey + paste)
-This must be enabled manually:
-1. Open **System Settings → Privacy & Security → Accessibility**
-2. Click the **+** button
-3. Navigate to `/Applications/Dictator.app` and add it
-4. Ensure the toggle is **ON**
+To grant one by hand, open its pane (or click it in the **Permissions**
+menu), add `/Applications/Dictator.app` with **+** and turn it on. Restart
+Dictator after granting Input Monitoring.
+
+When running from source (`make run`), macOS checks the permissions of the
+terminal app instead.
 
 ### Troubleshooting Permissions
 
-If the hotkey doesn't work:
-1. Go to **System Settings → Privacy & Security → Accessibility**
-2. Remove Dictator.app (select it and click **−**)
-3. Re-add it using the steps above
-4. Restart the app
+If a permission looks granted but Dictator says it is missing, the entry
+belongs to an earlier build (see [Code signing](#code-signing)):
+
+1. Quit Dictator
+2. Run `make reset-permissions`
+3. Start Dictator and grant the permissions again
 
 ## Project Structure
 
 ```
 dictator/
 ├── main.py           # Menu bar app and hotkey handling
+├── macos.py          # macOS permissions, clipboard and login item
 ├── audio.py          # Audio recording with sounddevice
-├── transcriber.py    # Whisper transcription
+├── transcriber.py    # Whisper transcription and model download
 ├── icons/            # Menu bar icons (generated)
 ├── models/           # Whisper model (downloaded)
 ├── Dictator.spec     # PyInstaller configuration
@@ -164,6 +216,9 @@ make lint
 
 # Format code
 make format
+
+# Run tests
+make test
 
 # Build app
 make build
@@ -189,6 +244,11 @@ The app supports two whisper.cpp models:
 | Small (English) | `ggml-small.en.bin` | ~466MB | English only | `make install-model` |
 | Medium (Multilingual) | `ggml-medium-q5_0.bin` | ~539MB | English, Dutch, Auto-detect | `make install-model-multilingual` |
 
+`make build` downloads both. Otherwise the app downloads the model the
+selected language needs at startup or when the language changes; the
+status line shows "Downloading model..." meanwhile. The **Models** menu
+downloads either one by hand.
+
 - The **English-only** model is loaded when the language is set to English
 - The **multilingual** model is loaded for Dutch or Auto-detect
 - Both models use Metal GPU acceleration on Apple Silicon
@@ -200,8 +260,10 @@ Auto-detect uses a two-pass approach: it first detects whether the audio is Engl
 
 ## Troubleshooting
 
-### Hotkey not working
-- See [Troubleshooting Permissions](#troubleshooting-permissions) above
+### Hotkey not working, or nothing is pasted
+- Check the **Permissions** menu, and see [Troubleshooting Permissions](#troubleshooting-permissions)
+- Check `~/.config/dictator/dictator.log`
+- Password managers and secure text fields can block global hotkeys while they are focused
 - Try a different hotkey from the menu
 
 ### "[BLANK_AUDIO]" or no transcription
