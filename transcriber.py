@@ -1,6 +1,7 @@
 """Transcription module using pywhispercpp."""
 
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,6 +11,9 @@ log = logging.getLogger(__name__)
 
 ENGLISH_MODEL = "ggml-small.en.bin"
 MULTILINGUAL_MODEL = "ggml-medium-q5_0.bin"  # 539 MB quantized; see model-choice doc
+
+MODEL_DIR = Path.home() / ".local" / "share" / "whisper-dictation"
+MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}"
 
 # Auto-detect is constrained to these languages to avoid
 # misdetection (e.g. Danish, Romanian for Dutch speakers).
@@ -35,15 +39,49 @@ def get_model_path(model_file: str = ENGLISH_MODEL) -> Path:
         return project_models
 
     # Fallback to user's local share folder
-    local_models = Path.home() / ".local" / "share" / "whisper-dictation" / model_file
+    local_models = MODEL_DIR / model_file
     if local_models.exists():
         return local_models
 
     raise FileNotFoundError(
-        f"Model not found: {model_file}. Please run 'make install-model' "
-        f"(English) or 'make install-model-multilingual' (Dutch/Auto) "
-        f"to download it."
+        f"Model not found: {model_file}. Download it from the Models menu, or run "
+        f"'make install-model' (English) or 'make install-model-multilingual' (Dutch/Auto)."
     )
+
+
+def model_for_language(language: str) -> str:
+    """The English-only model for 'en', the multilingual model otherwise."""
+    return ENGLISH_MODEL if language == "en" else MULTILINGUAL_MODEL
+
+
+def is_model_installed(model_file: str) -> bool:
+    """Whether the model file exists in any of the locations get_model_path checks."""
+    try:
+        get_model_path(model_file)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def download_model(model_file: str) -> Path:
+    """Download a model into MODEL_DIR and return its path.
+
+    Uses curl, which trusts the macOS system certificates; a bundled Python
+    may not. The file only appears under its final name once complete.
+    """
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    target = MODEL_DIR / model_file
+    partial = target.with_name(model_file + ".part")
+    try:
+        subprocess.run(
+            ["curl", "-fsSL", "--retry", "2", "-o", str(partial), MODEL_URL.format(model_file)],
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        partial.unlink(missing_ok=True)
+        raise
+    partial.replace(target)
+    return target
 
 
 def get_model(language: str = "en") -> Model:
@@ -53,7 +91,7 @@ def get_model(language: str = "en") -> Model:
     for any other language (including 'auto' for auto-detect).
     """
     global _model, _current_model_file
-    needed = ENGLISH_MODEL if language == "en" else MULTILINGUAL_MODEL
+    needed = model_for_language(language)
     if _model is None or _current_model_file != needed:
         model_path = get_model_path(needed)
         _model = Model(str(model_path), print_realtime=False, print_progress=False)
