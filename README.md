@@ -83,6 +83,23 @@ To build a standalone macOS app:
 make build
 ```
 
+#### Stable code signing
+
+macOS ties privacy permissions to the app's code signature. Without a
+signing certificate the app is signed ad hoc, which produces a new
+signature on every build, so macOS silently drops Dictator's permissions
+after each `make build`. To keep them, create a self-signed certificate
+once:
+
+1. Open **Keychain Access** and choose **Keychain Access > Certificate Assistant > Create a Certificate...**
+2. Name: `Dictator Local Signing`, Identity Type: **Self Signed Root**, Certificate Type: **Code Signing**, then **Create**
+3. Double-click the new certificate, open **Trust** and set **Code Signing** to **Always Trust**
+
+`make build` uses it automatically when present (another name works with
+`make build SIGN_IDENTITY="Your Name"`). Grant the permissions once more
+after the first signed build; they then survive rebuilds. With an ad-hoc
+build, run `make reset-permissions` and grant them again after every build.
+
 This will:
 - Build the app with PyInstaller
 - Bundle the whisper model inside the app
@@ -108,42 +125,55 @@ This will:
 
 Click the menu bar icon to access:
 
-- **Language**: Choose between English, Dutch, or Auto-detect (default)
 - **Hotkey**: Change the push-to-talk key (Right Option, Right Command, Left Option, or Left Command)
+- **Language**: Choose between English, Dutch, or Auto-detect (default). **Ctrl+Shift+L** cycles through them
+- **Models**: A check means installed; click a missing model to download it
+- **Permissions**: Shows whether each permission is granted; click one to open its System Settings pane
+- **Copy Last Transcription**: Put the last transcription back on the clipboard, e.g. when a paste went to the wrong place
 - **Start at Login**: Enable/disable auto-start
+
+The first line of the menu shows the status. Instead of "Ready" it shows a
+missing permission or the last error, until the next recording.
+
+After pasting, Dictator restores what was on the clipboard before.
 
 Settings are saved to `~/.config/dictator/config.json`.
 
 ## Permissions
 
-Dictator needs two permissions to function:
+Dictator needs three permissions. At startup it asks macOS to prompt for
+any that are missing, and the **Permissions** menu shows their state.
 
-### Microphone
-- macOS will prompt automatically on first recording
-- Click **Allow** when asked
+| Permission | Needed for | System Settings > Privacy & Security |
+|------------|------------|--------------------------------------|
+| Input Monitoring | Noticing the hotkey | Input Monitoring |
+| Accessibility | Pasting (simulated Cmd+V) | Accessibility |
+| Microphone | Recording | Microphone |
 
-### Accessibility (required for hotkey + paste)
-This must be enabled manually:
-1. Open **System Settings → Privacy & Security → Accessibility**
-2. Click the **+** button
-3. Navigate to `/Applications/Dictator.app` and add it
-4. Ensure the toggle is **ON**
+To grant one by hand, open its pane (or click it in the **Permissions**
+menu), add `/Applications/Dictator.app` with **+** and turn it on. Restart
+Dictator after granting Input Monitoring.
+
+When running from source (`make run`), macOS checks the permissions of the
+terminal app instead.
 
 ### Troubleshooting Permissions
 
-If the hotkey doesn't work:
-1. Go to **System Settings → Privacy & Security → Accessibility**
-2. Remove Dictator.app (select it and click **−**)
-3. Re-add it using the steps above
-4. Restart the app
+If a permission looks granted but Dictator says it is missing, the entry
+belongs to an earlier build (see [Stable code signing](#stable-code-signing)):
+
+1. Quit Dictator
+2. Run `make reset-permissions`
+3. Start Dictator and grant the permissions again
 
 ## Project Structure
 
 ```
 dictator/
 ├── main.py           # Menu bar app and hotkey handling
+├── macos.py          # macOS permissions, clipboard and login item
 ├── audio.py          # Audio recording with sounddevice
-├── transcriber.py    # Whisper transcription
+├── transcriber.py    # Whisper transcription and model download
 ├── icons/            # Menu bar icons (generated)
 ├── models/           # Whisper model (downloaded)
 ├── Dictator.spec     # PyInstaller configuration
@@ -164,6 +194,9 @@ make lint
 
 # Format code
 make format
+
+# Run tests
+make test
 
 # Build app
 make build
@@ -189,6 +222,8 @@ The app supports two whisper.cpp models:
 | Small (English) | `ggml-small.en.bin` | ~466MB | English only | `make install-model` |
 | Medium (Multilingual) | `ggml-medium-q5_0.bin` | ~539MB | English, Dutch, Auto-detect | `make install-model-multilingual` |
 
+Both can also be downloaded from the **Models** menu.
+
 - The **English-only** model is loaded when the language is set to English
 - The **multilingual** model is loaded for Dutch or Auto-detect
 - Both models use Metal GPU acceleration on Apple Silicon
@@ -200,8 +235,10 @@ Auto-detect uses a two-pass approach: it first detects whether the audio is Engl
 
 ## Troubleshooting
 
-### Hotkey not working
-- See [Troubleshooting Permissions](#troubleshooting-permissions) above
+### Hotkey not working, or nothing is pasted
+- Check the **Permissions** menu, and see [Troubleshooting Permissions](#troubleshooting-permissions)
+- Check `~/.config/dictator/dictator.log`
+- Password managers and secure text fields can block global hotkeys while they are focused
 - Try a different hotkey from the menu
 
 ### "[BLANK_AUDIO]" or no transcription

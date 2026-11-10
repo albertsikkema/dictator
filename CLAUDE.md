@@ -63,16 +63,19 @@ This is a macOS menu bar push-to-talk speech-to-text app. The flow is:
 
 1. **main.py** - `DictatorApp` (rumps.App subclass) runs the menu bar UI and hotkey listener
 2. **audio.py** - `AudioRecorder` captures audio via sounddevice while hotkey is held, exposes real-time `level` property for UI feedback
-3. **transcriber.py** - `transcribe()` uses pywhispercpp to run whisper.cpp inference, returns text
-4. Result is copied to clipboard and pasted via simulated Cmd+V
+3. **transcriber.py** - `transcribe()` uses pywhispercpp to run whisper.cpp inference, returns text; also downloads models
+4. Result is copied to clipboard and pasted via simulated Cmd+V, then the previous clipboard is restored
+5. **macos.py** - thin pyobjc wrappers: permission checks/prompts, event tap state, clipboard, login item
 
 Key architectural decisions:
-- Hotkey listener runs in daemon thread via pynput, with watchdog thread to auto-restart if it dies
-- Transcription runs in background thread to not block the hotkey listener
+- Hotkey listener runs in daemon thread via pynput, with a watchdog thread that restarts it if it dies and re-enables its event tap if macOS disabled it
+- Key callbacks must return quickly (macOS disables a slow event tap): microphone start/stop runs on a single audio worker thread, transcription in its own thread
+- AppKit is not thread-safe: background threads update the menu only via `on_main_thread()`
+- Key events are never logged (the log would record everything typed)
 - Model is lazy-loaded on first transcription to speed up app startup
 - Menu bar icon swaps between pre-generated PNGs (in `icons/`) to show audio level animation
 - Config stored in `~/.config/dictator/config.json`
-- Debug logs written to `~/.config/dictator/dictator.log`
+- Logs written to `~/.config/dictator/dictator.log`
 
 ## PyInstaller Bundling
 
@@ -80,7 +83,8 @@ Key architectural decisions:
 - Model files from `models/` are bundled into the app
 - pywhispercpp's native `.dylib` files must be explicitly collected
 - `LSUIElement: True` hides the app from the Dock (menu bar only)
-- The bundled app needs separate Accessibility permissions from the dev version
+- The bundled app needs separate permissions from the dev version
+- Signed with `DICTATOR_SIGN_IDENTITY` (set by `make app` when the keychain has that certificate), else ad hoc; ad-hoc builds lose their macOS permissions on every rebuild
 
 ## Common Pitfalls
 
@@ -97,4 +101,4 @@ When loading configuration files, always log exceptions so users can diagnose is
 - ✅ `except Exception as e: log.warning(f"Failed to load config, using defaults: {e}")`
 - ❌ `except Exception: pass`  # Silent failure hides corruption/permission errors
 
-See main.py:50-51 for the correct pattern.
+See `load_config()` in main.py for the correct pattern.

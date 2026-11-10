@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Permissions menu showing Accessibility, Input Monitoring and Microphone, with links to System Settings; missing permissions are requested at startup
+- Models menu to download missing whisper models
+- Copy Last Transcription menu item
+- `make reset-permissions`
+
+### Changed
+
+- Builds are signed with a stable self-signed certificate when available, so permissions survive rebuilds
+- The clipboard is restored after pasting
+- Start at Login uses a macOS login item instead of a Launch Agent; the old Launch Agent is migrated
+- Errors and missing permissions are shown in the menu status line
+
+### Fixed
+
+- Key presses are no longer written to the log file
+- The hotkey stopped working when macOS disabled a slow key listener
+- Ctrl+Shift+L kept cycling the language
+- Menu bar updates from background threads
+- Duplicate listener watchdogs after changing the hotkey
+- Bundle version in Info.plist
+
 ## [1.0.3] - 2026-01-17
 
 ### Fixed
