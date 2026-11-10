@@ -21,10 +21,10 @@ _mock_rumps.App = type(
         "icon": None,
     },
 )
-# rumps.MenuItem must be a callable that returns MagicMock instances.
+# rumps.MenuItem must be a callable that returns a new MagicMock per item.
 # Using MagicMock (the class) directly would pass the first arg as `spec`,
 # constraining the mock's attributes to those of a string.
-_mock_rumps.MenuItem = MagicMock()
+_mock_rumps.MenuItem = MagicMock(side_effect=lambda *args, **kwargs: MagicMock())
 _mock_rumps.separator = MagicMock()
 
 _mock_pynput = MagicMock()
@@ -38,13 +38,13 @@ sys.modules.setdefault("sounddevice", MagicMock())
 sys.modules.setdefault("pywhispercpp", MagicMock())
 sys.modules.setdefault("pywhispercpp.model", MagicMock())
 
+import macos  # noqa: E402
 import main  # noqa: E402
 
 # Restore references for the test module
 _original_config_dir = main.CONFIG_DIR
 _original_config_file = main.CONFIG_FILE
 _original_icons_dir = main.ICONS_DIR
-_original_launch_agent_dir = main.LAUNCH_AGENT_DIR
 _original_launch_agent_file = main.LAUNCH_AGENT_FILE
 _original_key = main.Key
 _original_hotkey_options = main.HOTKEY_OPTIONS
@@ -55,9 +55,32 @@ _original_hotkey_options = main.HOTKEY_OPTIONS
 # ---------------------------------------------------------------------------
 
 
+class _ImmediateExecutor:
+    """Stands in for the audio worker: runs submitted work right away."""
+
+    def submit(self, fn, *args):
+        fn(*args)
+
+
+def _mock_macos():
+    """A macos module mock with every permission granted."""
+    mock = MagicMock()
+    mock.ACCESSIBILITY = macos.ACCESSIBILITY
+    mock.INPUT_MONITORING = macos.INPUT_MONITORING
+    mock.MICROPHONE = macos.MICROPHONE
+    mock.PERMISSIONS = macos.PERMISSIONS
+    mock.permission_status.side_effect = lambda: {name: True for name in macos.PERMISSIONS}
+    mock.accessibility_granted.return_value = True
+    mock.login_item_enabled.return_value = False
+    return mock
+
+
 @pytest.fixture
 def app(tmp_path):
-    """Create a DictatorApp with all dependencies mocked."""
+    """Create a DictatorApp with all dependencies mocked.
+
+    Calls dispatched to the main thread run immediately.
+    """
     # Reset rumps mock call state
     _mock_rumps.reset_mock()
     _mock_pynput_keyboard.reset_mock()
@@ -65,8 +88,7 @@ def app(tmp_path):
     # Redirect config to tmp_path
     main.CONFIG_DIR = tmp_path / "config"
     main.CONFIG_FILE = main.CONFIG_DIR / "config.json"
-    main.LAUNCH_AGENT_DIR = tmp_path / "LaunchAgents"
-    main.LAUNCH_AGENT_FILE = main.LAUNCH_AGENT_DIR / "com.dictator.app.plist"
+    main.LAUNCH_AGENT_FILE = tmp_path / "LaunchAgents" / "com.dictator.app.plist"
 
     # Redirect icons to tmp_path and create dummy icons
     icons_dir = tmp_path / "icons"
@@ -103,27 +125,36 @@ def app(tmp_path):
     mock_listener = MagicMock()
     _mock_pynput_keyboard.Listener.return_value = mock_listener
 
+    mock_app_helper = MagicMock()
+    mock_app_helper.callAfter.side_effect = lambda func, *args: func(*args)
+
     with (
-        patch.object(main, "_generate_icons"),
-        patch.object(main, "AudioRecorder", return_value=mock_recorder),
-        patch.object(main.threading, "Thread", return_value=MagicMock()),
+        patch.object(main, "macos", _mock_macos()) as mock_macos,
+        patch.object(main, "AppHelper", mock_app_helper),
+        patch.object(main, "is_model_installed", return_value=False),
     ):
-        main.keyboard = _mock_pynput_keyboard
-        main.KeyboardController = MagicMock
-        app_instance = main.DictatorApp()
+        with (
+            patch.object(main, "_generate_icons"),
+            patch.object(main, "AudioRecorder", return_value=mock_recorder),
+            patch.object(main.threading, "Thread", return_value=MagicMock()),
+        ):
+            main.keyboard = _mock_pynput_keyboard
+            main.KeyboardController = MagicMock
+            app_instance = main.DictatorApp()
 
-    app_instance._mock_rumps = _mock_rumps
-    app_instance._mock_recorder = mock_recorder
-    app_instance._mock_listener = mock_listener
-    app_instance._mock_pynput_keyboard = _mock_pynput_keyboard
+        app_instance._audio_worker = _ImmediateExecutor()
+        app_instance._mock_rumps = _mock_rumps
+        app_instance._mock_recorder = mock_recorder
+        app_instance._mock_listener = mock_listener
+        app_instance._mock_pynput_keyboard = _mock_pynput_keyboard
+        app_instance._mock_macos = mock_macos
 
-    yield app_instance
+        yield app_instance
 
     # Restore module-level state
     main.CONFIG_DIR = _original_config_dir
     main.CONFIG_FILE = _original_config_file
     main.ICONS_DIR = _original_icons_dir
-    main.LAUNCH_AGENT_DIR = _original_launch_agent_dir
     main.LAUNCH_AGENT_FILE = _original_launch_agent_file
     main.Key = _original_key
     main.HOTKEY_OPTIONS = _original_hotkey_options
@@ -139,12 +170,12 @@ class TestLoadConfig:
         """No config file exists — returns default dict."""
         monkeypatch.setattr(main, "CONFIG_FILE", tmp_path / "nonexistent" / "config.json")
         result = main.load_config()
-        assert result == {"hotkey": "Right Option", "auto_start": False, "language": "Auto-detect"}
+        assert result == {"hotkey": "Right Option", "language": "Auto-detect"}
 
     def test_load_config_existing(self, tmp_path, monkeypatch):
         """Config file exists — returns its contents."""
         config_file = tmp_path / "config.json"
-        config = {"hotkey": "Left Option", "auto_start": True, "language": "Dutch"}
+        config = {"hotkey": "Left Option", "language": "Dutch"}
         config_file.write_text(json.dumps(config))
         monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         result = main.load_config()
@@ -156,7 +187,23 @@ class TestLoadConfig:
         config_file.write_text("{invalid json")
         monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         result = main.load_config()
-        assert result == {"hotkey": "Right Option", "auto_start": False, "language": "Auto-detect"}
+        assert result == {"hotkey": "Right Option", "language": "Auto-detect"}
+
+    def test_load_config_fills_missing_keys(self, tmp_path, monkeypatch):
+        """A config from an older version gets defaults for keys it lacks."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps({"hotkey": "Left Option", "auto_start": False}))
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
+        result = main.load_config()
+        assert result["hotkey"] == "Left Option"
+        assert result["language"] == "Auto-detect"
+
+    def test_load_config_not_a_dict(self, tmp_path, monkeypatch):
+        """Valid JSON that is not an object — returns defaults."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text("[1, 2]")
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
+        assert main.load_config() == main.DEFAULT_CONFIG
 
 
 class TestSaveConfig:
@@ -255,6 +302,10 @@ class TestUpdateStatus:
 
 
 class TestUpdateIconLevel:
+    @pytest.fixture(autouse=True)
+    def _recording(self, app):
+        app.is_recording = True
+
     def test_update_icon_level_zero(self, app):
         """Level 0 maps to recording_0.png."""
         app.update_icon_level(0)
@@ -269,6 +320,13 @@ class TestUpdateIconLevel:
         """Level 0.5 maps to recording_3.png."""
         app.update_icon_level(0.5)
         assert "recording_3.png" in str(app.icon)
+
+    def test_update_icon_level_ignored_after_recording(self, app):
+        """A late level update must not overwrite the transcribing icon."""
+        app.update_status("transcribing")
+        app.is_recording = False
+        app.update_icon_level(1.0)
+        assert "transcribing.png" in str(app.icon)
 
 
 # ---------------------------------------------------------------------------
@@ -521,63 +579,333 @@ class TestTranscribeAndPaste:
 
 
 class TestPasteText:
-    def test_paste_text_copies_to_clipboard(self, app):
-        """Verify subprocess receives text."""
-        mock_proc = MagicMock()
-        with patch.object(main.subprocess, "Popen", return_value=mock_proc) as mock_popen:
-            app.paste_text("test text")
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self):
+        with patch.object(main.time, "sleep"):
+            yield
 
-        mock_popen.assert_called_once()
-        mock_proc.communicate.assert_called_once_with(b"test text")
+    def test_paste_text_copies_to_clipboard(self, app):
+        """Text is put on the clipboard and remembered."""
+        app.paste_text("test text")
+        app._mock_macos.write_clipboard_text.assert_called_once_with("test text")
+        assert app.last_transcription == "test text"
 
     def test_paste_text_simulates_cmd_v(self, app):
         """Verify keyboard controller presses Cmd+V."""
-        mock_proc = MagicMock()
-        with patch.object(main.subprocess, "Popen", return_value=mock_proc):
-            app.paste_text("test")
-
+        app.paste_text("test")
         app.keyboard_controller.press.assert_any_call(main.Key.cmd)
         app.keyboard_controller.press.assert_any_call("v")
 
+    def test_paste_text_restores_clipboard(self, app):
+        """The previous clipboard comes back after the paste."""
+        app._mock_macos.read_clipboard.return_value = ["previous"]
+        app._mock_macos.write_clipboard_text.return_value = 5
+        app._mock_macos.clipboard_change_count.return_value = 5
+        app.paste_text("test")
+        app._mock_macos.restore_clipboard.assert_called_once_with(["previous"])
+
+    def test_paste_text_keeps_newer_clipboard(self, app):
+        """If something else changed the clipboard meanwhile, it is left alone."""
+        app._mock_macos.write_clipboard_text.return_value = 5
+        app._mock_macos.clipboard_change_count.return_value = 6
+        app.paste_text("test")
+        app._mock_macos.restore_clipboard.assert_not_called()
+
+    def test_paste_text_without_accessibility(self, app):
+        """No Accessibility: no Cmd+V, text stays on the clipboard, error shown."""
+        app._mock_macos.accessibility_granted.return_value = False
+        app.paste_text("test")
+        app.keyboard_controller.press.assert_not_called()
+        app._mock_macos.restore_clipboard.assert_not_called()
+        assert "Accessibility" in app.status_item.title
+
+    def test_paste_text_failure_shows_error(self, app):
+        """A clipboard error is reported in the menu."""
+        app._mock_macos.write_clipboard_text.side_effect = RuntimeError("boom")
+        app.paste_text("test")
+        assert "Paste failed" in app.status_item.title
+
+    def test_copy_last_transcription(self, app):
+        """The menu item puts the last transcription back on the clipboard."""
+        app.paste_text("remember me")
+        app._mock_macos.write_clipboard_text.reset_mock()
+        app.copy_last_transcription()
+        app._mock_macos.write_clipboard_text.assert_called_once_with("remember me")
+
+    def test_copy_last_transcription_nothing_yet(self, app):
+        """Without a transcription the clipboard is untouched."""
+        app.copy_last_transcription()
+        app._mock_macos.write_clipboard_text.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
-# Auto-start tests
+# Recording on the audio worker
 # ---------------------------------------------------------------------------
 
 
-class TestAutoStart:
-    def test_enable_auto_start_writes_plist(self, app):
-        """Verify plist file created."""
-        with patch.object(main.subprocess, "run"):
-            app.enable_auto_start()
+class TestRecording:
+    def test_key_press_does_not_touch_microphone(self, app):
+        """The key callback only queues work; the microphone starts on the worker."""
+        _, key_enums, _ = main.HOTKEY_OPTIONS[app.config["hotkey"]]
+        app._audio_worker = MagicMock()
+        app.on_key_press(next(iter(key_enums)))
+        app._mock_recorder.start.assert_not_called()
+        app._audio_worker.submit.assert_called_once_with(app._start_recording)
 
-        assert main.LAUNCH_AGENT_FILE.exists()
-        content = main.LAUNCH_AGENT_FILE.read_text()
-        assert "com.dictator.app" in content
+    def test_start_recording_failure_shows_error(self, app):
+        """A microphone error resets state and is shown in the menu."""
+        app.is_recording = True
+        app._mock_recorder.start.side_effect = OSError("no device")
+        app._start_recording()
+        assert app.is_recording is False
+        assert "Microphone" in app.status_item.title
 
-    def test_disable_auto_start_removes_plist(self, app):
-        """Verify file deleted."""
-        main.LAUNCH_AGENT_DIR.mkdir(parents=True, exist_ok=True)
-        main.LAUNCH_AGENT_FILE.write_text("dummy")
+    def test_start_recording_clears_error(self, app):
+        """A new recording clears the previous error."""
+        app.error = "old error"
+        with patch.object(main.threading, "Thread", return_value=MagicMock()):
+            app._start_recording()
+        assert app.error is None
+        assert "Listening" in app.status_item.title
 
-        with patch.object(main.subprocess, "run"):
-            app.disable_auto_start()
+    def test_stop_recording_failure_resets_status(self, app):
+        """An error stopping the microphone returns to ready."""
+        app._mock_recorder.stop.side_effect = OSError("stream gone")
+        app._stop_recording()
+        assert "Ready" in app.status_item.title
 
-        assert not main.LAUNCH_AGENT_FILE.exists()
+    def test_level_monitor_stops_with_recording(self, app):
+        """The monitor updates the icon until recording ends."""
+        app._mock_recorder.level = 1.0
+        app.is_recording = True
 
-    def test_toggle_auto_start(self, app):
-        """Verify toggling works and saves config."""
-        sender = MagicMock()
-        app.config["auto_start"] = False
+        def stop(_):
+            app.is_recording = False
+
+        with patch.object(main.time, "sleep", side_effect=stop):
+            app.level_monitor()
+        assert "recording_5.png" in str(app.icon)
+
+    def test_language_shortcut_runs_on_main_thread(self, app):
+        """Ctrl+Shift+L is dispatched to the main thread once."""
+        app._pressed_keys.update({main.Key.ctrl_l, main.Key.shift_l})
+        key = MagicMock()
+        key.char = "l"
+        with patch.object(main, "on_main_thread") as mock_main:
+            app.on_key_press(key)
+        mock_main.assert_called_once_with(app.cycle_language)
+
+
+# ---------------------------------------------------------------------------
+# Status and errors
+# ---------------------------------------------------------------------------
+
+
+class TestStatusMessages:
+    def test_missing_permission_shown_when_idle(self, app):
+        """A missing permission replaces "Ready" in the status."""
+        app.permissions[macos.MICROPHONE] = False
+        app.update_status("ready")
+        assert app.status_item.title == "Missing permission: Microphone"
+
+    def test_error_shown_until_cleared(self, app):
+        """show_error keeps the message in the status and notifies."""
+        _mock_rumps.notification.reset_mock()
+        app.show_error("Something broke")
+        assert app.status_item.title == "Something broke"
+        _mock_rumps.notification.assert_called_once()
+
+    def test_transcription_error_shown(self, app):
+        """A failed transcription is visible in the status."""
+        with patch.object(main, "transcribe", side_effect=RuntimeError("boom")):
+            app._transcribe_and_paste(Path("/tmp/test.wav"))
+        assert "Transcription failed" in app.status_item.title
+
+
+# ---------------------------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------------------------
+
+
+class TestPermissions:
+    def test_startup_requests_permissions(self, app):
+        """Missing permissions are requested once at startup."""
+        app._mock_macos.request_permissions.assert_called_once()
+
+    def test_check_permissions_updates_menu(self, app):
+        """Each permission's menu item shows its state."""
+        app._mock_macos.permission_status.side_effect = None
+        app._mock_macos.permission_status.return_value = {
+            macos.ACCESSIBILITY: True,
+            macos.INPUT_MONITORING: False,
+            macos.MICROPHONE: True,
+        }
+        app.check_permissions()
+        assert app.permission_items[macos.ACCESSIBILITY].title == "Accessibility: granted"
+        assert "missing" in app.permission_items[macos.INPUT_MONITORING].title
+        assert "Input Monitoring" in app.status_item.title
+
+    def test_input_monitoring_granted_restarts_listener(self, app):
+        """Gaining Input Monitoring restarts the listener, which was deaf without it."""
+        app.permissions[macos.INPUT_MONITORING] = False
+        with patch.object(app, "start_hotkey_listener") as mock_start:
+            app.check_permissions()
+        mock_start.assert_called_once()
+
+    def test_unchanged_permissions_leave_listener(self, app):
+        """No change, no restart."""
+        with patch.object(app, "start_hotkey_listener") as mock_start:
+            app.check_permissions()
+        mock_start.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Listener watchdog
+# ---------------------------------------------------------------------------
+
+
+class TestListenerWatchdog:
+    def test_dead_listener_restarted(self, app):
+        """A dead listener is replaced."""
+        app.listener.is_alive.return_value = False
+        with patch.object(app, "start_hotkey_listener") as mock_start:
+            app.check_listener()
+        mock_start.assert_called_once()
+
+    def test_dead_listener_not_restarted_without_input_monitoring(self, app):
+        """Without Input Monitoring a restart would die too."""
+        app.listener.is_alive.return_value = False
+        app.permissions[macos.INPUT_MONITORING] = False
+        with patch.object(app, "start_hotkey_listener") as mock_start:
+            app.check_listener()
+        mock_start.assert_not_called()
+
+    def test_disabled_event_tap_reenabled(self, app):
+        """A tap macOS switched off is switched back on."""
+        app.listener.is_alive.return_value = True
+        app._event_tap = "tap"
+        app._mock_macos.event_tap_enabled.return_value = False
+        app.check_listener()
+        app._mock_macos.enable_event_tap.assert_called_once_with("tap")
+
+    def test_enabled_event_tap_left_alone(self, app):
+        app.listener.is_alive.return_value = True
+        app._event_tap = "tap"
+        app._mock_macos.event_tap_enabled.return_value = True
+        app.check_listener()
+        app._mock_macos.enable_event_tap.assert_not_called()
+
+    def test_listener_event_tap_is_kept(self, app):
+        """The tap pynput creates is remembered for the watchdog."""
+        listener = MagicMock()
+        listener._create_event_tap.return_value = "new tap"
+        app._keep_event_tap(listener)
+        assert listener._create_event_tap() == "new tap"
+        assert app._event_tap == "new tap"
+
+    def test_watchdog_survives_errors(self, app):
+        """An exception in one check does not end the watchdog."""
+        calls = []
+
+        def check():
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("boom")
+            raise SystemExit
 
         with (
-            patch.object(main, "save_config"),
-            patch.object(app, "enable_auto_start"),
-            patch.object(app, "disable_auto_start"),
+            patch.object(main.time, "sleep"),
+            patch.object(app, "check_listener", side_effect=check),
+            pytest.raises(SystemExit),
         ):
-            app.toggle_auto_start(sender)
+            app._listener_watchdog()
+        assert len(calls) == 2
 
-        assert app.config["auto_start"] is True
+    def test_restart_stops_old_listener(self, app):
+        """Starting a listener stops the previous one, even if stop fails."""
+        old = app.listener
+        old.stop.side_effect = RuntimeError("already stopped")
+        app.start_hotkey_listener()
+        old.stop.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Models menu
+# ---------------------------------------------------------------------------
+
+
+class TestModels:
+    def _sender(self, model_file):
+        sender = MagicMock()
+        sender.title = next(k for k, v in main.MODEL_OPTIONS.items() if v == model_file)
+        return sender
+
+    def test_click_missing_model_starts_download(self, app):
+        sender = self._sender(main.ENGLISH_MODEL)
+        with (
+            patch.object(main, "is_model_installed", return_value=False),
+            patch.object(main.threading, "Thread") as mock_thread,
+        ):
+            app.on_model_clicked(sender)
+        mock_thread.return_value.start.assert_called_once()
+        assert "Downloading" in app.status_item.title
+
+    def test_click_installed_model_does_nothing(self, app):
+        sender = self._sender(main.ENGLISH_MODEL)
+        with (
+            patch.object(main, "is_model_installed", return_value=True),
+            patch.object(main.threading, "Thread") as mock_thread,
+        ):
+            app.on_model_clicked(sender)
+        mock_thread.assert_not_called()
+
+    def test_download_success_marks_installed(self, app):
+        with patch.object(main, "download_model"):
+            app._download_model(main.ENGLISH_MODEL)
+        assert app.model_items[main.ENGLISH_MODEL].state == 1
+        assert main.ENGLISH_MODEL not in app._downloading
+
+    def test_download_failure_shows_error(self, app):
+        with patch.object(main, "download_model", side_effect=OSError("offline")):
+            app._download_model(main.ENGLISH_MODEL)
+        assert "download failed" in app.status_item.title
+        assert main.ENGLISH_MODEL not in app._downloading
+
+
+# ---------------------------------------------------------------------------
+# Start at Login
+# ---------------------------------------------------------------------------
+
+
+class TestLoginItem:
+    def test_toggle_registers_login_item(self, app):
+        sender = MagicMock()
+        sender.state = 0
+        app._mock_macos.login_item_enabled.return_value = True
+        app.toggle_auto_start(sender)
+        app._mock_macos.set_login_item.assert_called_once_with(True)
+        assert sender.state == 1
+
+    def test_toggle_failure_shows_error(self, app):
+        sender = MagicMock()
+        sender.state = 0
+        app._mock_macos.set_login_item.side_effect = OSError("not a bundle")
+        app.toggle_auto_start(sender)
+        assert sender.state == 0
+        assert "Start at Login" in app.status_item.title
+
+    def test_login_item_status_error_reads_as_off(self, app):
+        app._mock_macos.login_item_enabled.side_effect = RuntimeError("unavailable")
+        assert app.login_item_enabled() is False
+
+    def test_old_launch_agent_migrated(self, app):
+        """The Launch Agent of earlier versions is replaced by a login item."""
+        main.LAUNCH_AGENT_FILE.parent.mkdir(parents=True)
+        main.LAUNCH_AGENT_FILE.write_text("plist")
+        with patch.object(main.subprocess, "run"):
+            app.migrate_launch_agent()
+        assert not main.LAUNCH_AGENT_FILE.exists()
+        app._mock_macos.set_login_item.assert_called_once_with(True)
 
 
 # ---------------------------------------------------------------------------
