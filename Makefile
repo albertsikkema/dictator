@@ -1,7 +1,14 @@
 .PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
+	reset-permissions \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
 	release release-draft test
 MODEL_DIR = ~/.local/share/whisper-dictation
+BUNDLE_ID = com.dictator.app
+
+# Code signing identity (a self-signed certificate in the login keychain).
+# Without it the app is signed ad hoc, and macOS drops its permissions on
+# every rebuild. See "Stable code signing" in README.md.
+SIGN_IDENTITY ?= Dictator Local Signing
 
 run:
 	uv run python main.py
@@ -26,13 +33,25 @@ generate-icons:
 app: generate-icons
 	@mkdir -p models
 	uv sync --extra dev
-	uv run pyinstaller Dictator.spec --noconfirm
+	@if security find-identity -p codesigning 2>/dev/null | grep -qF '"$(SIGN_IDENTITY)"'; then \
+		echo "Signing with \"$(SIGN_IDENTITY)\""; \
+		DICTATOR_SIGN_IDENTITY="$(SIGN_IDENTITY)" uv run pyinstaller Dictator.spec --noconfirm; \
+	else \
+		echo "Warning: signing identity \"$(SIGN_IDENTITY)\" not found, signing ad hoc."; \
+		echo "macOS will drop Dictator's permissions after this build (see README.md)."; \
+		uv run pyinstaller Dictator.spec --noconfirm; \
+	fi
 
 build: app
 	@rm -rf /Applications/Dictator.app
 	@ditto dist/Dictator.app /Applications/Dictator.app
 	@echo "Installed to /Applications/Dictator.app"
-	@echo "Note: Remove app from Accessibility settings and re-add after each build"
+
+# Forget Dictator's privacy permissions, e.g. after an ad-hoc signed rebuild
+reset-permissions:
+	-tccutil reset Accessibility $(BUNDLE_ID)
+	-tccutil reset ListenEvent $(BUNDLE_ID)
+	-tccutil reset Microphone $(BUNDLE_ID)
 
 lint:
 	uv run ruff check .
