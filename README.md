@@ -64,9 +64,10 @@ For building from source:
    uv sync
    ```
 
-3. Download a whisper model:
+3. Download the whisper models (optional: the app downloads the one it needs on first use):
    ```bash
-   make install-model              # English-only (~466MB)
+   make install-models              # both, skips any already downloaded
+   make install-model               # English-only (~466MB)
    make install-model-multilingual  # Multilingual (~539MB, required for Dutch / Auto-detect)
    ```
 
@@ -82,6 +83,10 @@ To build a standalone macOS app:
 ```bash
 make build
 ```
+
+This builds the app with PyInstaller, downloads both whisper models to
+`~/.local/share/whisper-dictation/` if they are missing (~1 GB the first
+time), and installs the app to `/Applications/Dictator.app`.
 
 #### Stable code signing
 
@@ -99,11 +104,6 @@ once:
 `make build SIGN_IDENTITY="Your Name"`). Grant the permissions once more
 after the first signed build; they then survive rebuilds. With an ad-hoc
 build, run `make reset-permissions` and grant them again after every build.
-
-This will:
-- Build the app with PyInstaller
-- Bundle the whisper model inside the app
-- Install to `/Applications/Dictator.app`
 
 ## Usage
 
@@ -222,7 +222,10 @@ The app supports two whisper.cpp models:
 | Small (English) | `ggml-small.en.bin` | ~466MB | English only | `make install-model` |
 | Medium (Multilingual) | `ggml-medium-q5_0.bin` | ~539MB | English, Dutch, Auto-detect | `make install-model-multilingual` |
 
-Both can also be downloaded from the **Models** menu.
+`make build` downloads both. Otherwise the app downloads the model the
+selected language needs at startup or when the language changes; the
+status line shows "Downloading model..." meanwhile. The **Models** menu
+downloads either one by hand.
 
 - The **English-only** model is loaded when the language is set to English
 - The **multilingual** model is loaded for Dutch or Auto-detect

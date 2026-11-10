@@ -23,6 +23,7 @@ from transcriber import (
     MULTILINGUAL_MODEL,
     download_model,
     is_model_installed,
+    model_for_language,
     transcribe,
 )
 
@@ -82,7 +83,10 @@ def load_config() -> dict:
     """Load configuration from file, filling in defaults for missing keys."""
     if CONFIG_FILE.exists():
         try:
-            return {**DEFAULT_CONFIG, **json.loads(CONFIG_FILE.read_text())}
+            config = json.loads(CONFIG_FILE.read_text())
+            # Configs from before the language setting existed used English
+            config.setdefault("language", "English")
+            return {**DEFAULT_CONFIG, **config}
         except Exception as e:
             log.warning(f"Failed to load config, using defaults: {e}")
     return dict(DEFAULT_CONFIG)
@@ -133,6 +137,7 @@ class DictatorApp(rumps.App):
         self.build_menu()
 
         self.migrate_launch_agent()
+        self.ensure_language_model()
 
         self.check_permissions()
         macos.request_permissions(self.permissions)
@@ -234,6 +239,7 @@ class DictatorApp(rumps.App):
 
         # Update status to reflect new language
         self.update_status("ready")
+        self.ensure_language_model()
 
         log.info(f"Language changed to: {sender.title}")
 
@@ -253,6 +259,7 @@ class DictatorApp(rumps.App):
         self._update_language_checkmarks(next_name)
 
         self.update_status("ready")
+        self.ensure_language_model()
 
         lang_short = LANGUAGE_SHORT.get(next_name, "EN")
         rumps.notification(
@@ -263,26 +270,35 @@ class DictatorApp(rumps.App):
         log.info(f"Language cycled to: {next_name}")
 
     def on_model_clicked(self, sender: rumps.MenuItem) -> None:
-        """Download a missing model in the background."""
-        model_file = MODEL_OPTIONS[sender.title]
+        """Download a missing model."""
+        self.ensure_model(MODEL_OPTIONS[sender.title])
+
+    def ensure_language_model(self) -> None:
+        """Download the model the selected language needs, if it is missing."""
+        language = LANGUAGE_OPTIONS.get(self.config["language"], "en")
+        self.ensure_model(model_for_language(language))
+
+    def ensure_model(self, model_file: str) -> None:
+        """Download a model in the background unless installed or already downloading."""
         if is_model_installed(model_file) or model_file in self._downloading:
             return
         self._downloading.add(model_file)
-        self.status_item.title = f"Downloading {sender.title}..."
+        self.update_status("ready")
         threading.Thread(target=self._download_model, args=(model_file,), daemon=True).start()
 
     def _download_model(self, model_file: str) -> None:
         """Download a model (runs in background thread)."""
+        log.info(f"Downloading model {model_file}")
         try:
-            log.info(f"Downloading model {model_file}")
             download_model(model_file)
-            log.info(f"Downloaded model {model_file}")
-            on_main_thread(self._model_downloaded, model_file)
         except Exception as e:
             log.error(f"Failed to download model {model_file}: {e}")
-            on_main_thread(self.show_error, "Model download failed")
-        finally:
             self._downloading.discard(model_file)
+            on_main_thread(self.show_error, "Model download failed - retry from the Models menu")
+            return
+        log.info(f"Downloaded model {model_file}")
+        self._downloading.discard(model_file)
+        on_main_thread(self._model_downloaded, model_file)
 
     def _model_downloaded(self, model_file: str) -> None:
         """Mark a model as installed in the menu."""
@@ -369,6 +385,8 @@ class DictatorApp(rumps.App):
         missing = [name for name, granted in self.permissions.items() if not granted]
         if missing:
             ready_text = f"Missing permission: {', '.join(missing)}"
+        elif self._downloading:
+            ready_text = "Downloading model..."
         elif self.error:
             ready_text = self.error
         else:
@@ -522,8 +540,12 @@ class DictatorApp(rumps.App):
             if text:
                 self.paste_text(text)
         except FileNotFoundError as e:
-            log.error(f"Model not found: {e}")
-            on_main_thread(self.show_error, "Model missing - download it from the Models menu")
+            log.error(str(e))
+            if self._downloading:
+                message = "Model still downloading - try again when it is done"
+            else:
+                message = "Model missing - download it from the Models menu"
+            on_main_thread(self.show_error, message)
         except Exception as e:
             log.error(f"Transcription failed: {e}")
             on_main_thread(self.show_error, "Transcription failed - see log")

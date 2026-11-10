@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Permissions menu showing Accessibility, Input Monitoring and Microphone, with links to System Settings; missing permissions are requested at startup
 - Models menu to download missing whisper models
+- The app downloads the model the selected language needs when it is missing
+- `make build` downloads both models if missing; `make install-models`
 - Copy Last Transcription menu item
 - `make reset-permissions`
 
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Menu bar updates from background threads
 - Duplicate listener watchdogs after changing the hotkey
 - Bundle version in Info.plist
+- Configs from before the language setting keep using English
 
 ## [1.0.3] - 2026-01-17
 

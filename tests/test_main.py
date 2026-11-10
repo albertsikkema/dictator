@@ -131,7 +131,7 @@ def app(tmp_path):
     with (
         patch.object(main, "macos", _mock_macos()) as mock_macos,
         patch.object(main, "AppHelper", mock_app_helper),
-        patch.object(main, "is_model_installed", return_value=False),
+        patch.object(main, "is_model_installed", return_value=True),
     ):
         with (
             patch.object(main, "_generate_icons"),
@@ -189,14 +189,21 @@ class TestLoadConfig:
         result = main.load_config()
         assert result == {"hotkey": "Right Option", "language": "Auto-detect"}
 
-    def test_load_config_fills_missing_keys(self, tmp_path, monkeypatch):
-        """A config from an older version gets defaults for keys it lacks."""
+    def test_load_config_old_config_keeps_english(self, tmp_path, monkeypatch):
+        """A config from before the language setting keeps using English."""
         config_file = tmp_path / "config.json"
         config_file.write_text(json.dumps({"hotkey": "Left Option", "auto_start": False}))
         monkeypatch.setattr(main, "CONFIG_FILE", config_file)
         result = main.load_config()
         assert result["hotkey"] == "Left Option"
-        assert result["language"] == "Auto-detect"
+        assert result["language"] == "English"
+
+    def test_load_config_fills_missing_keys(self, tmp_path, monkeypatch):
+        """Keys missing from the file get their defaults."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps({"language": "Dutch"}))
+        monkeypatch.setattr(main, "CONFIG_FILE", config_file)
+        assert main.load_config()["hotkey"] == "Right Option"
 
     def test_load_config_not_a_dict(self, tmp_path, monkeypatch):
         """Valid JSON that is not an object — returns defaults."""
@@ -848,7 +855,51 @@ class TestModels:
         ):
             app.on_model_clicked(sender)
         mock_thread.return_value.start.assert_called_once()
-        assert "Downloading" in app.status_item.title
+        assert app.status_item.title == "Downloading model..."
+
+    def test_click_downloading_model_does_nothing(self, app):
+        """A second click while downloading does not start another download."""
+        app._downloading.add(main.ENGLISH_MODEL)
+        with (
+            patch.object(main, "is_model_installed", return_value=False),
+            patch.object(main.threading, "Thread") as mock_thread,
+        ):
+            app.on_model_clicked(self._sender(main.ENGLISH_MODEL))
+        mock_thread.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("language", "model_file"),
+        [("English", "ENGLISH_MODEL"), ("Dutch", "MULTILINGUAL_MODEL")],
+    )
+    def test_selected_language_model_downloaded(self, app, language, model_file):
+        """Choosing a language downloads the model it needs when missing."""
+        sender = MagicMock()
+        sender.title = language
+        with (
+            patch.object(main, "save_config"),
+            patch.object(main, "is_model_installed", return_value=False),
+            patch.object(main.threading, "Thread"),
+        ):
+            app.change_language(sender)
+        assert app._downloading == {getattr(main, model_file)}
+
+    def test_startup_downloads_missing_model(self, app):
+        """At startup the selected language's model is downloaded if missing."""
+        with (
+            patch.object(main, "is_model_installed", return_value=False),
+            patch.object(main.threading, "Thread") as mock_thread,
+        ):
+            app.ensure_language_model()
+        assert mock_thread.call_args.kwargs["args"] == (main.MULTILINGUAL_MODEL,)
+
+    def test_transcribe_while_downloading(self, app):
+        """A missing model that is still downloading says so."""
+        app._downloading.add(main.MULTILINGUAL_MODEL)
+        with patch.object(main, "transcribe", side_effect=FileNotFoundError("missing")):
+            app._transcribe_and_paste(Path("/tmp/test.wav"))
+        app._downloading.clear()
+        app.update_status("ready")
+        assert "still downloading" in app.error
 
     def test_click_installed_model_does_nothing(self, app):
         sender = self._sender(main.ENGLISH_MODEL)

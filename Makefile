@@ -1,8 +1,10 @@
 .PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
+	install-models \
 	reset-permissions \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
 	release release-draft test
-MODEL_DIR = ~/.local/share/whisper-dictation
+MODEL_DIR = $(HOME)/.local/share/whisper-dictation
+MODEL_URL = https://huggingface.co/ggerganov/whisper.cpp/resolve/main
 BUNDLE_ID = com.dictator.app
 
 # Code signing identity (a self-signed certificate in the login keychain).
@@ -13,19 +15,17 @@ SIGN_IDENTITY ?= Dictator Local Signing
 run:
 	uv run python main.py
 
-install-model:
-	@mkdir -p $(MODEL_DIR)
-	@echo "Downloading English whisper model (ggml-small.en.bin ~466MB)..."
-	@curl -L -o $(MODEL_DIR)/ggml-small.en.bin \
-		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
-	@echo "Done. Model installed to $(MODEL_DIR)"
+# Models are file targets, so make skips any that are already downloaded
+install-model: $(MODEL_DIR)/ggml-small.en.bin            # English, ~466MB
+install-model-multilingual: $(MODEL_DIR)/ggml-medium-q5_0.bin  # Dutch/Auto, ~539MB
+install-models: install-model install-model-multilingual
 
-install-model-multilingual:
+$(MODEL_DIR)/%.bin:
 	@mkdir -p $(MODEL_DIR)
-	@echo "Downloading multilingual whisper model (ggml-medium-q5_0.bin ~539MB)..."
-	@curl -L -o $(MODEL_DIR)/ggml-medium-q5_0.bin \
-		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin
-	@echo "Done. Model installed to $(MODEL_DIR)"
+	@echo "Downloading whisper model $*.bin..."
+	@curl -fL --retry 2 -o $@.part $(MODEL_URL)/$*.bin
+	@mv $@.part $@
+	@echo "Done. Model installed to $@"
 
 generate-icons:
 	uv run python generate_icons.py
@@ -42,7 +42,7 @@ app: generate-icons
 		uv run pyinstaller Dictator.spec --noconfirm; \
 	fi
 
-build: app
+build: app install-models
 	@rm -rf /Applications/Dictator.app
 	@ditto dist/Dictator.app /Applications/Dictator.app
 	@echo "Installed to /Applications/Dictator.app"
