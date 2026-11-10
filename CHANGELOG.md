@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make build` downloads both models if missing; `make install-models`
 - Copy Last Transcription menu item
 - `make reset-permissions`
+- `make notarize` for Developer ID builds; releases signed with a Developer ID are notarized
 
 ### Changed
 

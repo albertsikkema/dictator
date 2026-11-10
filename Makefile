@@ -1,5 +1,5 @@
 .PHONY: run lint format install app build clean zip dmg generate-icons install-model install-model-multilingual \
-	install-models \
+	install-models notarize \
 	reset-permissions \
 	check-version check-clean check-on-main check-no-existing-tag check-gh-auth \
 	release release-draft test
@@ -7,10 +7,21 @@ MODEL_DIR = $(HOME)/.local/share/whisper-dictation
 MODEL_URL = https://huggingface.co/ggerganov/whisper.cpp/resolve/main
 BUNDLE_ID = com.dictator.app
 
-# Code signing identity (a self-signed certificate in the login keychain).
-# Without it the app is signed ad hoc, and macOS drops its permissions on
-# every rebuild. See "Stable code signing" in README.md.
+# Code signing identity: a self-signed certificate in the login keychain, or
+# a "Developer ID Application: ..." certificate for builds others can open.
+# Without one the app is signed ad hoc, and macOS drops its permissions on
+# every rebuild. See "Code signing" in README.md.
 SIGN_IDENTITY ?= Dictator Local Signing
+
+# notarytool credentials, stored once with `xcrun notarytool store-credentials`
+NOTARY_PROFILE ?= dictator-notary
+
+# Releases signed with a Developer ID are notarized; others are not
+ifneq (,$(findstring Developer ID Application,$(SIGN_IDENTITY)))
+RELEASE_DMG_TARGET := notarize
+else
+RELEASE_DMG_TARGET := dmg
+endif
 
 run:
 	uv run python main.py
@@ -91,6 +102,13 @@ dmg: app
 		-ov -format UDZO $(DMG_NAME)
 	@echo "Created $(DMG_NAME) ($$(du -h $(DMG_NAME) | cut -f1))"
 
+# Sign, notarize and staple the DMG (needs a Developer ID SIGN_IDENTITY)
+notarize: dmg
+	codesign --force --timestamp --sign "$(SIGN_IDENTITY)" $(DMG_NAME)
+	xcrun notarytool submit $(DMG_NAME) --keychain-profile "$(NOTARY_PROFILE)" --wait
+	xcrun stapler staple $(DMG_NAME)
+	spctl --assess --type open --context context:primary-signature --verbose $(DMG_NAME)
+
 # === Pre-release Checks ===
 check-version:
 	@if ! echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
@@ -149,7 +167,7 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 	@$(MAKE) app
 	@echo ""
 	@echo "[2/6] Creating DMG..."
-	@$(MAKE) dmg
+	@$(MAKE) $(RELEASE_DMG_TARGET)
 	@echo ""
 	@echo "[3/6] Extracting release notes from CHANGELOG.md..."
 	$(extract_changelog)
@@ -176,7 +194,7 @@ release: check-version check-clean check-on-main check-no-existing-tag check-gh-
 
 release-draft: check-version check-clean check-on-main check-no-existing-tag check-gh-auth
 	@echo "Creating draft release for $(TAG)..."
-	@$(MAKE) dmg
+	@$(MAKE) $(RELEASE_DMG_TARGET)
 	$(extract_changelog)
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)

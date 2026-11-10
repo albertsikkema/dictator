@@ -88,13 +88,16 @@ This builds the app with PyInstaller, downloads both whisper models to
 `~/.local/share/whisper-dictation/` if they are missing (~1 GB the first
 time), and installs the app to `/Applications/Dictator.app`.
 
-#### Stable code signing
+#### Code signing
 
 macOS ties privacy permissions to the app's code signature. Without a
 signing certificate the app is signed ad hoc, which produces a new
 signature on every build, so macOS silently drops Dictator's permissions
-after each `make build`. To keep them, create a self-signed certificate
-once:
+after each `make build`. Sign with either a self-signed certificate (for
+your own Mac) or an Apple Developer ID (for builds others can open
+without security warnings).
+
+**Self-signed certificate** - create it once:
 
 1. Open **Keychain Access** and choose **Keychain Access > Certificate Assistant > Create a Certificate...**
 2. Name: `Dictator Local Signing`, Identity Type: **Self Signed Root**, Certificate Type: **Code Signing**, then **Create**
@@ -104,6 +107,25 @@ once:
 `make build SIGN_IDENTITY="Your Name"`). Grant the permissions once more
 after the first signed build; they then survive rebuilds. With an ad-hoc
 build, run `make reset-permissions` and grant them again after every build.
+
+**Apple Developer ID** - requires a paid Apple Developer account:
+
+1. Create a **Developer ID Application** certificate: in Xcode, **Settings > Accounts**, select your team, **Manage Certificates... > + > Developer ID Application**
+2. Find its exact name: `security find-identity -v -p codesigning`
+3. Store notarization credentials once, using an app-specific password from [account.apple.com](https://account.apple.com):
+   ```bash
+   xcrun notarytool store-credentials dictator-notary \
+       --apple-id you@example.com --team-id YOURTEAMID
+   ```
+4. Build with it, e.g. by exporting it in your shell profile:
+   ```bash
+   export SIGN_IDENTITY="Developer ID Application: Your Name (YOURTEAMID)"
+   make build          # local install, hardened runtime, no notarization
+   make notarize       # signed, notarized and stapled DMG in releases/
+   ```
+
+With a Developer ID identity, `make release` and `make release-draft`
+publish the notarized DMG.
 
 ## Usage
 
@@ -160,7 +182,7 @@ terminal app instead.
 ### Troubleshooting Permissions
 
 If a permission looks granted but Dictator says it is missing, the entry
-belongs to an earlier build (see [Stable code signing](#stable-code-signing)):
+belongs to an earlier build (see [Code signing](#code-signing)):
 
 1. Quit Dictator
 2. Run `make reset-permissions`

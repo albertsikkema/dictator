@@ -85,6 +85,7 @@ Key architectural decisions:
 - `LSUIElement: True` hides the app from the Dock (menu bar only)
 - The bundled app needs separate permissions from the dev version
 - Signed with `DICTATOR_SIGN_IDENTITY` (set by `make app` when the keychain has that certificate), else ad hoc; ad-hoc builds lose their macOS permissions on every rebuild
+- PyInstaller signs with the hardened runtime and a secure timestamp; `make notarize` notarizes the DMG for a Developer ID identity
 
 ## Common Pitfalls
 
